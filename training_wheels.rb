@@ -1,8 +1,7 @@
-#/usr/bin/env ruby
+#!/usr/bin/env ruby
 require "fileutils"
 require "io/console"
-require "uri"
-require "net/http"
+
 
 def main_page
   puts "DynaRuby is a client written in Ruby that allows you to update any given NoIP hostname"
@@ -55,11 +54,9 @@ def set_args
   confirm_args(username, password, hostnames)
 end
 
-private
-
 def confirm_args(username, password, hostnames)
-  puts "Is this ok? (y/n) username: #{username} password: #{password} hostnames: #{hostnames}"
   loop do
+    puts "Is this ok? (y/n) username: #{username} password: #{password} hostnames: #{hostnames}"
     answer = gets.chomp
     break if answer == "y" || answer == "yes"
     set_args if answer == "n" || answer == "no"
@@ -77,9 +74,38 @@ def confirm_args(username, password, hostnames)
       hostnames_config.write("#{hostname}\n")
     end
     hostnames_config.close
-  end
-  config.write("#{username}\n#{password}\n#{hostnames.first}")
-  config.close
+
+    config.write("#{username}\n#{password}")
+    config.close
+  else
+    config.write("#{username}\n#{password}\n#{hostnames.first}")
+    config.close
+
 
   check_ip
 end
+
+def check_ip
+  ip = `curl ifconfig.co`.chomp
+  if ip != @last_ip
+    @last_ip = ip
+    puts "IP changed to #{ip}"
+    update_ip
+  end
+end
+
+def update_ip(ip)
+  puts "updating IP..."
+  url=URI.parse("https://dynupdate.no-ip.com/nic/update")
+  agent="Personal dynaruby/openbsd"
+  if File.exist?("/etc/dynaruby_hostnames.conf")
+    hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
+    config= File.readlines("/etc/dynaruby.conf").map(&:chomp)
+    hostnames.each do |hostname|
+    res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
+    if res.include?("nochg")
+      puts "hostname #{hostname} updated"
+  end
+
+
+main_page
