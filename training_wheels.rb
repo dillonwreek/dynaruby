@@ -2,9 +2,8 @@
 require "fileutils"
 require "io/console"
 
-
 def main_page
-  puts "DynaRuby is a client written in Ruby that allows you to update any given NoIP hostname"
+  puts "DynaRuby is an ipv4 updater written in Ruby that allows you to update any given NoIP hostname"
   puts "version 0.1. Made with love by Dillon"
 
   conf_file = "/etc/dynaruby.conf"
@@ -64,11 +63,9 @@ def confirm_args(username, password, hostnames)
     puts "please choose either y(es) or n(o) to confirm the args." if answer != "y" && answer != "n"
   end
 
-  FileUtils.touch("/etc/dynaruby.conf")
   config = File.open("/etc/dynaruby.conf", "w")
   if hostnames.size > 1
     puts "if you have multiple hostnames, we'll create a new file /etc/dynaruby_hostnames.conf"
-    FileUtils.touch("/etc/dynaruby_hostnames.conf")
     hostnames_config = File.open("/etc/dynaruby_hostnames.conf", "a")
     hostnames.each do |hostname|
       hostnames_config.write("#{hostname}\n")
@@ -81,30 +78,39 @@ def confirm_args(username, password, hostnames)
     config.write("#{username}\n#{password}\n#{hostnames.first}")
     config.close
 
-
-  check_ip
+    check_ip
 end
 
-def check_ip
-  ip = `curl ifconfig.co`.chomp
-  if ip != @last_ip
-    @last_ip = ip
-    puts "IP changed to #{ip}"
-    update_ip
+  def check_ip
+    ip = `curl ifconfig.co`.chomp
+    if ip != @last_ip
+      @last_ip = ip
+      puts "IP changed to #{ip}"
+      update_ip
+    end
   end
-end
 
-def update_ip(ip)
-  puts "updating IP..."
-  url=URI.parse("https://dynupdate.no-ip.com/nic/update")
-  agent="Personal dynaruby/openbsd"
-  if File.exist?("/etc/dynaruby_hostnames.conf")
-    hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
-    config= File.readlines("/etc/dynaruby.conf").map(&:chomp)
-    hostnames.each do |hostname|
-    res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
-    if res.include?("nochg")
-      puts "hostname #{hostname} updated"
+  def update_ip(ip)
+    puts "updating IP..."
+    url = URI.parse("https://dynupdate.no-ip.com/nic/update")
+    agent = "Personal dynaruby/openbsd"
+    if File.exist?("/etc/dynaruby_hostnames.conf")
+      hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
+      config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
+      hostnames.each do |hostname|
+        res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
+        if res.include?("nochg")
+          puts "hostname #{hostname} was already up-to-date"
+        elsif res.include?("good")
+          puts "hostname #{hostname} updated"
+        else
+          puts "something went wrong updating hostname #{hostname}, error: #{res}"
+        end
+      end
+    else
+      config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
+      res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{config[2]}" -d "myip=#{ip}" #{url}`
+    end
   end
 
 
