@@ -1,26 +1,30 @@
 #!/usr/bin/env ruby
 require "fileutils"
 require "io/console"
+require "uri"
+require_relative "user_input"
 
-#a simple method to DRY user confirmation
-def yes_or_no
-  Signal.trap("INT") { puts " Stopping..."; exit 130 }
-  loop do
-    @answer = gets.chomp
-    break if @answer == "y" || @answer == "yes"
-    break if @answer == "n" || @answer == "no"
-    puts "please choose either y(es) or n(o) to confirm." if answer != "y" && answer != "n" && answer != "no" && answer != "yes"
+class UserInput
+  #a simple method to DRY user confirmation
+  def yes_or_no
+    Signal.trap("INT") { puts " Stopping..."; exit 130 }
+    loop do
+      @answer = gets.chomp
+      return true if @answer == "y" || @answer == "yes"
+      return false if @answer == "n" || @answer == "no"
+      puts "please choose either y(es) or n(o) to confirm."
+    end
   end
-  return true if @answer == "y" || @answer == "yes"
-  return false if @answer == "n" || @answer == "no"
 end
 
 #script starts here
 def main_page
+  anser = UserInput.new
+  p answer
   if false
     if __dir__ != "/usr/local/sbin"
       puts 'Warning: script isn\'t in /usr/local/sbin.'
-      puts "Please use the installer to generate a config and place the scripts in their appropriate directories. If you already have the config file, you can just place this script under /usr/local/sbin."
+      puts "Please use the installer to place the scripts in their appropriate directories and generate a config. If you already have the config file, you can just place this script under /usr/local/sbin."
       exit
     end
   end
@@ -99,7 +103,7 @@ def check_ip
   if ip != @last_ip
     @last_ip = ip
     puts "IP changed to #{ip}"
-    update_ip(ip)
+    populate_hostnames(ip)
   else
     puts "else"
     check_ip
@@ -107,36 +111,36 @@ def check_ip
 end
 
 #send the request to the No-IP API endpoint
-def update_ip(ip)
-  puts "Updating IP.."
-  url = "https://dynupdate.no-ip.com/nic/update"
-  agent = "Personal dynaruby/openbsd-v7.03"
+def populate_hostnames(ip)
+  puts "Populating hostnames"
 
   if File.exist?("/etc/dynaruby_hostnames.conf") #if the user has multiple hostnames..
     hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
     config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
-    hostnames.each do |hostname|
-      puts "updating ip for hostname #{hostname}"
-      res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}` #user-agent doesn't work
-
-      check_response(res)
-    end
   else
     config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
-    puts "updating ip for #{config[2]}"
-    res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{config[2]}" -d "myip=#{ip}" #{url}`
-    check_response(res)
+    hostnames = [config[2]]
+  end
+  update_hostnames(config, hostnames, ip)
+end
+
+def update_hostnames(config, hostnames, ip)
+  url = URI("https://dynupdate.no-ip.com/nic/update")
+  agent = "Personal dynaruby/openbsd"
+  hostnames.each do |hostname|
+    response = `curl --get --silent --show-error --user-agent '#{agent}' --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
+    check_response(response, config)
   end
 end
 
 #dirty way to check for the response type
-def check_response(res)
-  if res.include?("nochg")
+def check_response(response, config)
+  if response.include?("nochg")
     puts "hostname #{config[2]} was already up-to-date"
-  elsif res.include?("good")
+  elsif response.include?("good")
     puts "hostname #{config[2]} updated"
   else
-    puts "something went wrong updating hostname #{config[2]}, error: #{res}"
+    puts "something went wrong updating hostname #{config[2]}, error: #{response}"
     check_ip
   end
 end
