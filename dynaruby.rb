@@ -2,27 +2,43 @@
 require "fileutils"
 require "io/console"
 
-def main_page
-  puts "DynaRuby is an ipv4 no-ip client written in Ruby. v 0.1 Made with love by Dillon"
+#a simple method to DRY user confirmation
+def yes_or_no
+  Signal.trap("INT") { puts " Stopping..."; exit 130 }
+  loop do
+    @answer = gets.chomp
+    break if @answer == "y" || @answer == "yes"
+    break if @answer == "n" || @answer == "no"
+    puts "please choose either y(es) or n(o) to confirm." if answer != "y" && answer != "n" && answer != "no" && answer != "yes"
+  end
+  return true if @answer == "y" || @answer == "yes"
+  return false if @answer == "n" || @answer == "no"
+end
 
+#script starts here
+def main_page
+  if false
+    if __dir__ != "/usr/local/sbin"
+      puts 'Warning: script isn\'t in /usr/local/sbin.'
+      puts "Please use the installer to generate a config and place the scripts in their appropriate directories. If you already have the config file, you can just place this script under /usr/local/sbin."
+      exit
+    end
+  end
   conf_file = "/etc/dynaruby.conf"
   if !File.exist?(conf_file)
     puts "Config file not found, want to create one? (y/n)"
-    loop do
-      answer = gets.chomp
-      break if answer == "y"
-      if answer == "n"
-        puts "we need a config file."
-        exit
-      end
-      puts "Please input y(es) or n(o) to confirm." if answer != "y" && answer != "n"
+    if yes_or_no
+      set_args
+    else
+      puts "we need a config file."
+      main_page
     end
-    set_args
   else
     check_ip
   end
 end
 
+#set the arguments for the config
 def set_args
   puts "please input username: "
   username = gets.chomp
@@ -35,6 +51,7 @@ def set_args
   hostnames = []
   n = 0
   loop do
+    Signal.trap("INT") { puts " Stopping..."; exit 130 }
     puts "hostname #{n + 1}: "
     hostnames << gets.chomp
     conf = hostnames.last
@@ -48,35 +65,35 @@ def set_args
     end
   end
 
-  hstnames.pop
+  hostnames.pop
   confirm_args(username, password, hostnames)
 end
 
+#confirm the arguments, and write them to the config. The config will look different if you have multiple hostnames.
 def confirm_args(username, password, hostnames)
-  loop do
-    puts "Is this ok? (y/n) username: #{username} password: #{password} hostnames: #{hostnames}"
-    answer = gets.chomp
-    break if answer == "y" || answer == "yes"
-    set_args if answer == "n" || answer == "no"
-    puts "please choose either y(es) or n(o) to confirm the args." if answer != "y" && answer != "n"
-  end
-  config = File.open("/etc/dynaruby.conf", "w")
-  if hostnames.size > 1
-    puts "if you have multiple hostnames, we'll create a new file /etc/dynaruby_hostnames.conf"
-    hostnames_config = File.open("/etc/dynaruby_hostnames.conf", "a")
-    hostnames.each do |hostname|
-      hostnames_config.write("#{hostname}\n")
-    end
-    hostnames_config.close
-    config.write("#{username}\n#{password}")
-    config.close
+  puts "Is this ok? (y/n) username: #{username} password: #{password} hostnames: #{hostnames}"
+  if !yes_or_no
+    set_args
   else
-    config.write("#{username}\n#{password}\n#{hostnames.first}")
-    config.close
+    config = File.open("/etc/dynaruby.conf", "w")
+    if hostnames.size > 1
+      puts "if you have multiple hostnames, we'll create a new file /etc/dynaruby_hostnames.conf"
+      hostnames_config = File.open("/etc/dynaruby_hostnames.conf", "a")
+      hostnames.each do |hostname|
+        hostnames_config.write("#{hostname}\n")
+      end
+      hostnames_config.close
+      config.write("#{username}\n#{password}")
+      config.close
+    else
+      config.write("#{username}\n#{password}\n#{hostnames.first}")
+      config.close
+    end
+    check_ip
   end
-  check_ip
 end
 
+#curls ifconfig.co for the pubip.
 def check_ip
   ip = `curl ifconfig.co`.chomp
   if ip != @last_ip
@@ -89,36 +106,42 @@ def check_ip
   end
 end
 
+#send the request to the No-IP API endpoint
 def update_ip(ip)
   puts "Updating IP.."
   url = "https://dynupdate.no-ip.com/nic/update"
   agent = "Personal dynaruby/openbsd-v7.03"
-  if File.exist?("/etc/dynaruby_hostnames.conf")
+
+  if File.exist?("/etc/dynaruby_hostnames.conf") #if the user has multiple hostnames..
     hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
     config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
     hostnames.each do |hostname|
       puts "updating ip for hostname #{hostname}"
-      res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
-      if res.include?("nochg")
-        puts "hostname #{hostname} was already up-to-date"
-      elsif res.include?("good")
-        puts "hostname #{hostname} updated"
-      else
-        puts "something went wrong updating hostname #{hostname}, error: #{res}"
-      end
+      res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}` #user-agent doesn't work
+
+      check_response(res)
     end
   else
     config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
     puts "updating ip for #{config[2]}"
     res = `curl --get --silent --show-error --user-agent #{agent} --user #{config[0]}:#{config[1]} -d "hostname=#{config[2]}" -d "myip=#{ip}" #{url}`
-    if res.include?("nochg")
-      puts "hostname #{config[2]} was already up-to-date"
-    elsif res.include?("good")
-      puts "hostname #{config[2]} updated"
-    else
-      puts "something went wrong updating hostname #{config[2]}, error: #{res}"
-    end
+    check_response(res)
   end
 end
 
+#dirty way to check for the response type
+def check_response(res)
+  if res.include?("nochg")
+    puts "hostname #{config[2]} was already up-to-date"
+  elsif res.include?("good")
+    puts "hostname #{config[2]} updated"
+  else
+    puts "something went wrong updating hostname #{config[2]}, error: #{res}"
+    check_ip
+  end
+end
+
+puts "DynaRuby is an ipv4 no-ip client written in Ruby. v 0.1 Made with love by Dillon"
+
+#run the script
 main_page
