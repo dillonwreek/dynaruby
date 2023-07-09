@@ -1,12 +1,10 @@
 #!/usr/bin/env ruby
-require "fileutils"
 require "io/console"
 require "uri"
 
 class UserInput
-  #a simple method to DRY user confirmation
   def yes_or_no
-    Signal.trap("INT") { puts " Stopping..."; exit 130 }
+    Signal.trap("INT") { puts " Stopping..."; exit 130 } #gracefully exit
     loop do
       @answer = gets.chomp
       return true if @answer == "y" || @answer == "yes"
@@ -14,137 +12,129 @@ class UserInput
       puts "please choose either y(es) or n(o) to confirm."
     end
   end
-end
 
-#script starts here
-def main_page
-  answer = UserInput.new.yes_or_no
-  p answer
-  if false
-    if __dir__ != "/usr/local/sbin"
-      puts 'Warning: script isn\'t in /usr/local/sbin.'
-      puts "Please use the installer to place the scripts in their appropriate directories and generate a config. If you already have the config file, you can just place this script under /usr/local/sbin."
-      exit
+  #method to set the arguments for the curl command.
+  def set_args
+    args = []
+    Signal.trap("INT") { puts " Stopping..."; exit 130 } #gracefully exit
+
+    #config will look like this
+    #username=
+    #input
+    #password=
+    #input
+    #hostnames=
+    #input
+    #input
+    #..
+
+    puts "Please input username:"
+    args[0] = "username="
+    args[1] = gets.chomp
+    puts "Please input password:"
+    args[2] = "password="
+    args[3] = STDIN.noecho(&:gets).chomp # do not echo password
+    puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
+    args[4] = "hostnames="
+    i = 5
+    until args.last == ""
+      Signal.trap("INT") { puts " Stopping..."; exit 130 } # gracefully exit
+      args[i] = gets.chomp
+      p args[i]
+
+      if args[i] == "d" && i > 5
+        puts "hostname removed."
+        args.pop # remove d
+        args.pop # remove last hostname
+        i = i - 1
+      elsif args[i] == "d" && i == 5 # dont remove things that arent hostnames from the config
+        puts "you need to input an hostname before you can remove one"
+        args.pop
+      else
+        i += 1
+      end
     end
+    args.pop #remove confirmation line
+    confirm_args(args)
   end
-  conf_file = "/etc/dynaruby.conf"
-  if !File.exist?(conf_file)
-    puts "Config file not found, want to create one? (y/n)"
-    if yes_or_no
+
+  #confirm_args asks for confirmation and goes back to set_args if confirmation fails
+  def confirm_args(args)
+    puts "Is this ok? (y/n) #{args}"
+    if !yes_or_no
       set_args
     else
-      puts "we need a config file."
-      main_page
-    end
-  else
-    check_ip
-  end
-end
-
-#set the arguments for the config
-def set_args
-  puts "please input username: "
-  username = gets.chomp
-  puts "Note: Sometimes characters won't be escaped correctly if your password has symbols. Consider changing your password if you're facing issues."
-  puts "Please input password: "
-  password = STDIN.noecho(&:gets).chomp
-
-  puts "Please input hostname(s)/ Tell me you're done with an empty line. Submit d to delete the last inputted hostname"
-
-  hostnames = []
-  n = 0
-  loop do
-    Signal.trap("INT") { puts " Stopping..."; exit 130 }
-    puts "hostname #{n + 1}: "
-    hostnames << gets.chomp
-    conf = hostnames.last
-    break if hostnames.last == ""
-    if hostnames.last == "d"
-      puts "hostname removed."
-      hostnames.pop
-      n = n - 1
-    else
-      n += 1
-    end
-  end
-
-  hostnames.pop
-  confirm_args(username, password, hostnames)
-end
-
-#confirm the arguments, and write them to the config. The config will look different if you have multiple hostnames.
-def confirm_args(username, password, hostnames)
-  puts "Is this ok? (y/n) username: #{username} password: #{password} hostnames: #{hostnames}"
-  if !yes_or_no
-    set_args
-  else
-    config = File.open("/etc/dynaruby.conf", "w")
-    if hostnames.size > 1
-      puts "if you have multiple hostnames, we'll create a new file /etc/dynaruby_hostnames.conf"
-      hostnames_config = File.open("/etc/dynaruby_hostnames.conf", "a")
-      hostnames.each do |hostname|
-        hostnames_config.write("#{hostname}\n")
+      config = File.open("/etc/dynaruby.conf", "a")
+      args.each do |arg|
+        config.write("#{arg}\n")
       end
-      hostnames_config.close
-      config.write("#{username}\n#{password}")
-      config.close
-    else
-      config.write("#{username}\n#{password}\n#{hostnames.first}")
       config.close
     end
-    check_ip
+    puts "Arguements written to /etc/dynaruby.conf"
   end
 end
 
-#curls ifconfig.co for the pubip.
-def check_ip
-  ip = `curl ifconfig.co`.chomp
-  if ip != @last_ip
-    @last_ip = ip
-    puts "IP changed to #{ip}"
-    populate_hostnames(ip)
-  else
-    puts "else"
-    check_ip
+class CheckIP
+  #method to check the ip, simple curl to ifconfig.co. IPs are public variables to be more accessible
+  def check
+    @ip = `curl ifconfig.co`.chomp
+    if @ip != @last_ip
+      puts "IP changed from #{@last_ip} to #{@ip}"
+      @last_ip = @ip
+      populate_hostnames
+    end
+  end
+
+  #populate a hostnames array from the line 5 onward in the config.
+  def populate_hostnames
+    hostnames = []
+    args = File.readlines("/etc/dynaruby.conf").map(&:chomp)
+    if args.size > 5 # does the config contain more than one hostname?
+      for i in 5..args.size - 1
+        hostnames << args[i]
+      end
+    else
+      hostnames = args.last #if not just set the hostname to the last line
+    end
+    update_ip(hostnames)
+  end
+
+  def update_ip(hostnames)
+    url = URI("https://dynupdate.no-ip.com/nic/update")
+    agent = "Personal dynaruby/openbsd"
+    args = File.readlines("/etc/dynaruby.conf").first(4).map(&:chomp) #grab only the first four lines of the config(username and password)
+    hostnames.each do |hostname| # loop through the hostnames and send the request to the no-ip API endpoint
+      puts "username= #{args[1]} password= #{args[3]}"
+      response = `curl --get --silent --show-error --user-agent '#{agent}' --user #{args[1]}:#{args[3]} -d 'hostname=#{hostname}' -d  "myip=#{@ip}" #{url}`
+      check_response(response, hostname)
+    end
+  end
+
+  #tell the user if the request was successful or not
+  def check_response(response, hostname)
+    if response.include?("nochg")
+      puts "hostname #{hostname} was already up-to-date"
+    elsif response.include?("good")
+      puts "hostname #{hostname} updated"
+    else
+      puts "something went wrong updating hostname #{hostname}, error: #{response}"
+      check
+    end
   end
 end
 
-#send the request to the No-IP API endpoint
-def populate_hostnames(ip)
-  puts "Populating hostnames"
+input = UserInput.new
+probe = CheckIP.new
 
-  if File.exist?("/etc/dynaruby_hostnames.conf") #if the user has multiple hostnames..
-    hostnames = File.readlines("/etc/dynaruby_hostnames.conf").map(&:chomp)
-    config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
-  else
-    config = File.readlines("/etc/dynaruby.conf").map(&:chomp)
-    hostnames = [config[2]]
-  end
-  update_hostnames(config, hostnames, ip)
+puts "DynaRuby is an ipv4 no-ip client written in Ruby. Version: 0.1 - Made with love by Dillon"
+config = "/etc/dynaruby.conf"
+if !File.exist?(config)
+  puts "Config file not found. Creating one..."
+  input.set_args
 end
+probe.check
 
-def update_hostnames(config, hostnames, ip)
-  url = URI("https://dynupdate.no-ip.com/nic/update")
-  agent = "Personal dynaruby/openbsd"
-  hostnames.each do |hostname|
-    response = `curl --get --silent --show-error --user-agent '#{agent}' --user #{config[0]}:#{config[1]} -d "hostname=#{hostname}" -d "myip=#{ip}" #{url}`
-    check_response(response, config)
-  end
-end
+#to do:
 
-#dirty way to check for the response type
-def check_response(response, config)
-  if response.include?("nochg")
-    puts "hostname #{config[2]} was already up-to-date"
-  elsif response.include?("good")
-    puts "hostname #{config[2]} updated"
-  else
-    puts "something went wrong updating hostname #{config[2]}, error: #{response}"
-    check_ip
-  end
-end
-
-puts "DynaRuby is an ipv4 no-ip client written in Ruby. v 0.1 Made with love by Dillon"
-
-#run the script
-main_page
+#schedule check_ip
+#change curl to the appropriate ruby way of doing it (http)
