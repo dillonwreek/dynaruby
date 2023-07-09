@@ -2,7 +2,6 @@
 require "fileutils"
 require "io/console"
 require "uri"
-require_relative "user_input"
 
 class UserInput
   #a simple method to DRY user confirmation
@@ -19,7 +18,7 @@ end
 
 #script starts here
 def main_page
-  anser = UserInput.new
+  answer = UserInput.new.yes_or_no
   p answer
   if false
     if __dir__ != "/usr/local/sbin"
