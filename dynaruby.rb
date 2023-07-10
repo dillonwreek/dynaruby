@@ -126,7 +126,7 @@ end
 input = UserInput.new
 probe = CheckIP.new
 
-puts "DynaRuby is an ipv4 no-ip client written in Ruby. Version: 0.1 - Made with love by Dillon"
+puts "DynaRuby an ipv4 no-ip client written in Ruby."
 config = "/etc/dynaruby.conf"
 if !File.exist?(config)
   puts "Config file not found. Creating one..."
