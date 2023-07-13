@@ -38,8 +38,16 @@ def decrypt
   decipher.iv = iv
   encrypted_pswd = Base64.decode64(File.readlines("/etc/pswd").first)
   decrypted_pswd = decipher.update(encrypted_pswd) + decipher.final
-  puts decrypted_pswd
+  puts @decrypted_pswd
 end
 
 encrypt
 decrypt
+
+def check_ip
+  ip = `curl ifconfig.com`.chomp
+  if ip != @last_ip
+    puts "IP changed from #{@last_ip} to #{@ip}"
+    @last_ip = ip
+  end
+end
