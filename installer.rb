@@ -58,7 +58,7 @@ def encrypt(password)
   p "password = #{password}"
   key = OpenSSL::Random.random_bytes(32)
   iv = OpenSSL::Random.random_bytes(16)
-  merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
+  merged_key_iv = Base64.strict_encode64(key).chomp + "," + Base64.strict_encode64(iv).chomp
   p "merged_key_iv = #{merged_key_iv}"
   bash = File.open("#{Dir.home}/.bashrc", "a")
   bash.write "export DYNARUBY_KEY='#{merged_key_iv}'"
