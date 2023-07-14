@@ -55,14 +55,39 @@ end
 def encrypt(password)
   cipher = OpenSSL::Cipher::AES.new(256, :CBC)
   cipher.encrypt
-  p "password = #{password}"
   key = OpenSSL::Random.random_bytes(32)
   iv = OpenSSL::Random.random_bytes(16)
-  merged_key_iv = Base64.strict_encode64(key).chomp + "," + Base64.strict_encode64(iv).chomp
+  merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
+  cipher.key = key
+  cipher.iv = iv
   p "merged_key_iv = #{merged_key_iv}"
   bash = File.open("#{Dir.home}/.bashrc", "a")
-  bash.write "export DYNARUBY_KEY='#{merged_key_iv}'"
+  bash.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
+
+  encrypted_pswd = cipher.update(password) + cipher.final
+  p "encrypted_pswd = #{encrypted_pswd}"
+  encoded_pswd = Base64.strict_encode64(encrypted_pswd)
+  p "encoded_pswd = #{encoded_pswd}"
+
   bash.close
 end
 
-encrypt("cocco")
+def decrypt(password)
+  decipher = OpenSSL::Cipher::AES.new(256, :CBC)
+  decipher.decrypt
+  p "password = #{password}"
+  merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
+
+  p "merged_key_iv = #{merged_key_iv_array}"
+
+  key = Base64.decode64(merged_key_iv_array[0])
+  iv = Base64.decode64(merged_key_iv_array[1])
+  p "key = #{key}"
+  p "iv = #{iv}"
+  decipher.key = key
+  decipher.iv = iv
+  decrypted_pswd = decipher.update(Base64.strict_decode64(password)) + decipher.final
+  puts decrypted_pswd
+end
+
+decrypt("95SeJpd6YJrDlD4KKvPrCA==")
