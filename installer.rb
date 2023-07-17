@@ -4,11 +4,16 @@ require "io/console"
 require "base64"
 require "openssl"
 
+def catch_ctrl_c
+  Signal.trap("INT") { puts " Stopping..."; exit 130 } #gracefully exit
+end
+
 def start
   !File.exist?("/etc/dynaruby.conf") ? set_args : config_found
 end
 
 def config_found
+  catch_ctrl_c
   puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
   if yes_or_no
     set_args
@@ -19,17 +24,21 @@ def config_found
 end
 
 def yes_or_no
+  catch_ctrl_c
   positive_answers = ["y", "yes"]
   negative_answers = ["n", "no"]
   result = nil
   until result == true || result == false
     @answer = gets.downcase.chomp
+
+    #branchless way of checking for y or n + invalid input
     result = positive_answers.include?(@answer) ? true : negative_answers.include?(@answer) ? false : (puts "Please choose either y(es) or n(o) to confirm."; nil)
   end
   result
 end
 
 def set_args
+  catch_ctrl_c
   puts "Let's get started"
   puts "Please input username:"
   username = gets.chomp
@@ -46,10 +55,21 @@ def set_args
       number_of_hostnames = number_of_hostnames - 1
       hostnames.pop
       hostnames.pop
+    else
+      number_of_hostnames = number_of_hostnames + 1
     end
-    number_of_hostnames = number_of_hostnames + 1
   end
-  encrypt(password)
+  hostnames.pop
+
+  encrypted_pswd = encrypt(password)
+
+  args = ["username=", username, "password=", encrypted_pswd, "hostnames="]
+  args += hostnames
+  config = File.open("/etc/dynaruby.conf", "a")
+  args.each do |arg|
+    config.write("#{arg}\n")
+  end
+  copy_script
 end
 
 def encrypt(password)
@@ -61,33 +81,32 @@ def encrypt(password)
   cipher.key = key
   cipher.iv = iv
   p "merged_key_iv = #{merged_key_iv}"
-  bash = File.open("#{Dir.home}/.bashrc", "a")
-  bash.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
+  bashrc = File.open("#{Dir.home}/.bashrc", "a")
+  bashrc.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
+  bashrc.close
 
   encrypted_pswd = cipher.update(password) + cipher.final
-  p "encrypted_pswd = #{encrypted_pswd}"
   encoded_pswd = Base64.strict_encode64(encrypted_pswd)
-  p "encoded_pswd = #{encoded_pswd}"
-
-  bash.close
 end
 
 def decrypt(password)
   decipher = OpenSSL::Cipher::AES.new(256, :CBC)
   decipher.decrypt
-  p "password = #{password}"
   merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
-
-  p "merged_key_iv = #{merged_key_iv_array}"
-
-  key = Base64.decode64(merged_key_iv_array[0])
-  iv = Base64.decode64(merged_key_iv_array[1])
-  p "key = #{key}"
-  p "iv = #{iv}"
-  decipher.key = key
-  decipher.iv = iv
-  decrypted_pswd = decipher.update(Base64.strict_decode64(password)) + decipher.final
-  puts decrypted_pswd
+  decipher.key = Base64.decode64(merged_key_iv_array[0])
+  decipher.iv = Base64.decode64(merged_key_iv_array[1])
+  decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
+  p "decrypted_pswd = #{decrypted_pswd}"
 end
 
-decrypt("95SeJpd6YJrDlD4KKvPrCA==")
+def copy_script
+  p "Copying Dynaruby script to /usr/local/sbin/"
+  FileUtils.cp("./dynaruby.rb", "/usr/local/sbin/dynaruby")
+  p "Copying Dynaruby rc.d service script to /etc/rc.d/"
+  #FileUtils.cp("./rc.d", "/etc/rc.d/dynaruby")
+end
+
+def enable_service
+end
+
+copy_script
