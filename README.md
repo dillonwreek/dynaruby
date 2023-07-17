@@ -7,7 +7,7 @@ Note: I don't know exactly how "slower" it will be than a pure sh client, but it
 
 Todo:
 <ol>
-  <li>use http instead of curl </li>
+  <li>use http instead of curl </li>✅
   <li>write rc.d/dynaruby</li>
   <li>decide what to do with the installer</li>
   
