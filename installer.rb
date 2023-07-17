@@ -16,6 +16,8 @@ def config_found
   catch_ctrl_c
   puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
   if yes_or_no
+    #remove the config
+    FileUtils.rm("/etc/dynaruby.conf")
     set_args
   else
     puts "Aborting..."
@@ -109,4 +111,4 @@ end
 def enable_service
 end
 
-copy_script
+decrypt("sLBCKZOmsLYFw1tBq9bWFA==")

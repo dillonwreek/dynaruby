@@ -1,30 +1,23 @@
 #!/usr/bin/env ruby
 class Config
-  def read_from_file
+  def initialize
     @config ||= File.readlines("/etc/dynaruby.conf").map(&:chomp)
   end
 
   def username
-    @config[1]
+    @username = @config[1]
   end
 
   def password
-    @config[3]
+    @password = @config[3]
   end
 
   def hostnames
-    hostnames = []
-    @config[5..-1].each do |hostname|
-      hostnames << hostname
-    end
-    hostnames
+    @hostnames = @config[5..-1]
   end
 end
 
 config = Config.new
-config.read_from_file
-loop do
-  puts config.username
-  puts config.password
-  puts config.hostnames
-end
+puts "Username: #{config.username}"
+puts "Password: #{config.password}"
+puts "Hostnames: #{config.hostnames}"
