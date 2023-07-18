@@ -32,7 +32,7 @@ class Installer
     negative_answers = ["n", "no"]
     result = nil
     until result == true || result == false
-      @answer = gets.downcase.chomp
+      @answer = STDIN.gets.downcase.chomp
 
       #branchless way of checking for y or n + invalid input
       result = positive_answers.include?(@answer) ? true : negative_answers.include?(@answer) ? false : (puts "Please choose either y(es) or n(o) to confirm."; nil)
@@ -44,7 +44,7 @@ class Installer
     catch_ctrl_c
     puts "Let's get started with the configuration"
     puts "Please input username:"
-    username = gets.chomp
+    username = STDIN.gets.chomp
     puts "Please input password:"
     password = STDIN.noecho(&:gets).chomp
     puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
@@ -52,7 +52,7 @@ class Installer
     number_of_hostnames = 1
     until hostnames.last == ""
       puts "Please input hostname number #{number_of_hostnames}:"
-      hostnames << gets.chomp
+      hostnames << STDIN.gets.chomp
       if hostnames.last == "d"
         puts "hostname removed."
         number_of_hostnames = number_of_hostnames - 1
@@ -97,6 +97,7 @@ class Installer
     FileUtils.cp("./dynaruby.rb", "/usr/local/sbin/dynaruby")
     p "Copying Dynaruby rc.d service script to /etc/rc.d/"
     #FileUtils.cp("./rc.d", "/etc/rc.d/dynaruby")
+    p "Successfully installed Dynaruby!"
   end
 
   def enable_service
@@ -135,18 +136,16 @@ class CheckIP
     @last_ip = nil
   end
 
-  def pub_ip
-    myip = Net::HTTP.get_response(URI("http://ifconfig.me/ip")).body.chomp
-  end
-
   def monitor_ip_changes
-    my_ip = pub_ip
+    puts "Checking for IP change"
+    my_ip = Net::HTTP.get_response(URI("http://ifconfig.me/ip")).body.chomp
     if my_ip != @last_ip
-      puts "IP changed from #{@last_ip} to #{my_ip}"
+      @last_ip != nil ? (puts "IP changed from #{@last_ip} to #{my_ip})") : (puts "Last IP was nil. Current IP: #{my_ip}")
       @last_ip = my_ip
       update_ip(my_ip)
     else
       #wait 5 minutes and try again
+      p "IP unchanged. Waiting for 5 minutes and checking again"
       sleep 300
       monitor_ip_changes
     end
@@ -160,20 +159,12 @@ class CheckIP
     authorization = Base64.encode64("#{config.username}:#{config.password}")
     headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/openbsd" }
     response = Net::HTTP.get_response(url, headers, authentication)
-    if response.body.include?("nochg")
-      puts "Hostname already up to date. IP unchanged"
-    elsif response.body.include?("good")
-      puts "Hostname updated. IP changed"
-    else
-      puts "Something went wrong updating hostname, error: #{response.body}"
-    end
+    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP")
     monitor_ip_changes
   end
 end
 
-if !File.exist?("/etc/dynaruby.conf") || ARGV[0] == "-install"
-  Installer.new.start
-end
-
+accepted_args = ["-i", "-install"]
+(File.exist?("/etc/dynaruby.conf") && !accepted_args.include?(ARGV[0])) ? nil : Installer.new.start
 probe = CheckIP.new
 probe.monitor_ip_changes
