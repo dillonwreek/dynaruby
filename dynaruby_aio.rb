@@ -18,12 +18,7 @@ class Installer
   def config_found
     catch_ctrl_c
     puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
-    if yes_or_no
-      set_args
-    else
-      puts "Aborting..."
-      exit
-    end
+    yes_or_no ? set_args : (puts "Aborting..."; exit 130) #branchless confirmation
   end
 
   def yes_or_no
