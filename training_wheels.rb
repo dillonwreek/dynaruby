@@ -1,28 +1,22 @@
 #!/usr/bin/env ruby
-require "fileutils"
 
 def hello
-  puts "Hello !"
+  puts "hello"
 end
 
-class Config
-  def read_config_file
-    @config ||= File.readlines("/etc/dynaruby.conf").map(&:chomp)
-  end
-
-  def username
-    @config.first
-  end
-
-  def password
-    @config = "password"
-  end
-
-  def hostnames
-    @config = "hostnames"
+module Installer
+  def os
+    hello
+    case RUBY_PLATFORM
+    when /darwin/
+      "mac"
+    when /linux/
+      "linux"
+    when /bsd/
+      "bsd"
+    end
   end
 end
 
-config = Config.new
-
-config.read_config_file
+include Installer
+Installer.os
