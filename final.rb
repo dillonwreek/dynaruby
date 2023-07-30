@@ -81,7 +81,7 @@ module Installer
 
   def copy_script
     FileUtils.copy("./dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
-    0 #os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : nil
+    #os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : nil
 
     #puts "Successfully installed Dynaruby!" and exit
   end
@@ -102,7 +102,6 @@ module Installer
   end
 
   def write_env_to_shell(merged_key_iv)
-    puts "hello"
     bashrc = File.open("#{Dir.home}/.bashrc", "a")
     bashrc.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
     bashrc.close
@@ -128,8 +127,8 @@ class Config
     @last_ip = nil
   end
 
-  def sleep_time_in_minutes
-    @config_file[1].i.to_minutes
+  def sleep_time
+    @config_file[1].to_i
   end
 
   def username
@@ -158,12 +157,20 @@ end
 
 class Updater < Config
   def check_ip
-    new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
-    @last_ip == nil ? (puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(new_ip)) : @last_ip != new_ip ? (puts "IP changed from #{@last_ip} to #{new_ip}"; update_ip(new_ip)) : @last_ip == new_ip ? (puts "IP unchanged, sleeping for #{sleep_time_in_minutes / 60} minutes and trying again"; sleep sleep_time_in_minutes; check_ip) : nil
+    catch_ctrl_c
+    begin
+      new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
+    rescue StandardError => error
+      puts "Error: #{error}.. Waiting for 1 minute and checking again"
+      sleep 60
+      check_ip
+    end
+
+    @last_ip == nil ? (puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(new_ip)) : @last_ip != new_ip ? (puts "IP changed from #{@last_ip} to #{new_ip}"; update_ip(new_ip)) : @last_ip == new_ip ? (puts "IP unchanged, sleeping for #{sleep_time} minutes and checking again"; sleep(sleep_time * 60); check_ip) : nil
   end
 
   def update_ip(new_ip)
-    # http request form stuff
+    # https request form stuff
     url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{hostnames.join(" ")}&myip=#{new_ip}")
     authentication = Net::HTTP::Get.new(url)
     authentication.basic_auth username, password
@@ -171,18 +178,24 @@ class Updater < Config
     headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/openbsd-7.3" }
 
     # response
-    response = Net::HTTP.get_response(url, headers, authentication)
+    begin
+      response = Net::HTTP.get_response(url, headers, authentication)
+    rescue StandardError => error
+      puts "Error: #{error}... Waiting for 1 minute and trying again"
+      sleep 60
+      update_ip(new_ip)
+    end
     #parse response
     response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body)
 
     # call to check again
-    p "hello"
     check_ip
   end
 end
 
 installation_keywords = ["-i", "--install"]
-installation_keywords.include?(ARGV[0]) ? (puts "Starting installation..."; start_installation) : nil
 dynaruby = Updater.new
-p "@config: #{dynaruby.hostnames}"
-dynaruby ? (puts "Starting updater..."; dynaruby.check_ip) : (puts "Config not found..   Starting installation..."; dynaruby.start_installation)
+installation_keywords.include?(ARGV[0]) ? (puts "Starting installation..."; dynaruby.start_installation) : nil
+File.exist?("/etc/dynaruby.conf") ? (puts "Starting updater..."; dynaruby.check_ip) : (puts "Config not found..   Starting installation..."; dynaruby.start_installation)
+dyn_key = `echo $DYNARUBY_KEY`
+`DYNARUBY_KEY=#{dyn_key} ./final.rb`

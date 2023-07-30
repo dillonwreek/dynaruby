@@ -1,25 +1,17 @@
 #!/usr/bin/env ruby
 
-class Updater
-  extend Config
-
-  def some_method
-    p "hello"
-    @config.some_other_method
+module Installer
+  def install_method
+    p "Installing"
   end
 end
 
 class Config
-  def initialize
-    p "Initializing"
-    @config = [1, 2, 3]
-  end
-
-  def some_other_method
-    p "config #{@config[0]}"
-  end
+  include Installer
 end
 
-@config = Config.new
+class Updater < Config
+end
 
-@config.some_method
+updater = Updater.new
+updater.install_method
