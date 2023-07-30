@@ -67,7 +67,7 @@ module Installer
     end
     config.pop
 
-    config[5] = Base64.encode64(encrypt(config[5]))
+    config[5] = encrypt(config[5])
 
     config_file = File.open("/etc/dynaruby.conf", "w")
     config.each do |arg|
@@ -81,9 +81,31 @@ module Installer
 
   def copy_script
     FileUtils.copy("./dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
-    os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : nil
+    0 #os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : nil
 
-    puts "Successfully installed Dynaruby!" and exit
+    #puts "Successfully installed Dynaruby!" and exit
+  end
+
+  private
+
+  def encrypt(password)
+    cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    cipher.encrypt
+    key = OpenSSL::Random.random_bytes(32)
+    iv = OpenSSL::Random.random_bytes(16)
+    merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
+    write_env_to_shell(merged_key_iv)
+    cipher.key = key
+    cipher.iv = iv
+    encrypted_pswd = cipher.update(password) + cipher.final
+    encoded_pswd = Base64.strict_encode64(encrypted_pswd)
+  end
+
+  def write_env_to_shell(merged_key_iv)
+    puts "hello"
+    bashrc = File.open("#{Dir.home}/.bashrc", "a")
+    bashrc.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
+    bashrc.close
   end
 
   def os
@@ -97,3 +119,70 @@ module Installer
     end
   end
 end
+
+class Config
+  include Installer
+
+  def initialize
+    File.exist?("/etc/dynaruby.conf") ? @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp) : @config_file = false
+    @last_ip = nil
+  end
+
+  def sleep_time_in_minutes
+    @config_file[1].i.to_minutes
+  end
+
+  def username
+    @config_file[3]
+  end
+
+  def password
+    decrypted_password = decrypt(@config_file[5])
+  end
+
+  def hostnames
+    @config_file[7..-1]
+  end
+
+  private
+
+  def decrypt(encrypted_password)
+    decipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    decipher.decrypt
+    merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
+    decipher.key = Base64.decode64(merged_key_iv_array[0])
+    decipher.iv = Base64.decode64(merged_key_iv_array[1])
+    decrypted_pswd = decipher.update(Base64.decode64(encrypted_password)) + decipher.final
+  end
+end
+
+class Updater < Config
+  def check_ip
+    new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
+    @last_ip == nil ? (puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(new_ip)) : @last_ip != new_ip ? (puts "IP changed from #{@last_ip} to #{new_ip}"; update_ip(new_ip)) : @last_ip == new_ip ? (puts "IP unchanged, sleeping for #{sleep_time_in_minutes / 60} minutes and trying again"; sleep sleep_time_in_minutes; check_ip) : nil
+  end
+
+  def update_ip(new_ip)
+    # http request form stuff
+    url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{hostnames.join(" ")}&myip=#{new_ip}")
+    authentication = Net::HTTP::Get.new(url)
+    authentication.basic_auth username, password
+    authorization = Base64.encode64("#{username}:#{password}")
+    headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/openbsd-7.3" }
+
+    # response
+    response = Net::HTTP.get_response(url, headers, authentication)
+    #parse response
+    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body)
+
+    # call to check again
+    p "hello"
+    check_ip
+  end
+end
+
+installation_keywords = ["-i", "--install"]
+installation_keywords.include?(ARGV[0]) ? (puts "Starting installation..."; start_installation) : nil
+dynaruby = Updater.new
+p "@config: #{dynaruby.hostnames}"
+dynaruby ? (puts "Starting updater..."; dynaruby.check_ip) : (puts "Config not found..   Starting installation..."; dynaruby.start_installation)
