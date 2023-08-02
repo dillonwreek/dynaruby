@@ -74,16 +74,15 @@ module Installer
       config_file.write("#{arg}\n")
     end
     config_file.close
-    puts "Config written to /etc/dynaruby.conf"
+    puts "Config written to /etsc/dynaruby.conf"
 
     copy_script
   end
 
   def copy_script
     FileUtils.copy("./dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
-    #os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : nil
-
-    #puts "Successfully installed Dynaruby!" and exit
+    os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
+    puts "Successfully installed Dynaruby!"
   end
 
   private
@@ -102,20 +101,27 @@ module Installer
   end
 
   def write_env_to_shell(merged_key_iv)
-    bashrc = File.open("#{Dir.home}/.bashrc", "a")
-    bashrc.write "export DYNARUBY_KEY='#{merged_key_iv}'\n"
-    bashrc.close
+    os == "linux" ? write_service : os == "bsd" ? write_rcd : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
+  end
+
+  def write_service
+    !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
+    dynaruby_service = File.readlines("dynaruby.service").map(&:chomp)
+    dynaruby_service[6] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+    File.open("/etc/systemd/system/dynaruby.service", "w") do |file|
+      dynaruby_service.each { |line| file.puts(line) }
+    end
+  end
+
+  def download_service_script
+  end
+
+  def write_rcd
+    #todo
   end
 
   def os
-    case RUBY_PLATFORM
-    when /darwin/
-      "mac"
-    when /linux/
-      "linux"
-    when /bsd/
-      "bsd"
-    end
+    RUBY_PLATFORM.include?("linux") ? "linux" : RUBY_PLATFORM.include?("bsd") ? "bsd" : RUBY_PLATFORM.include?("darwin") ? (puts "macOS is not supported."; exit 130) : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
   end
 end
 
@@ -171,6 +177,7 @@ class Updater < Config
 
   def update_ip(new_ip)
     # https request form stuff
+    p "hostnames = #{hostnames.join(" ")}"
     url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{hostnames.join(" ")}&myip=#{new_ip}")
     authentication = Net::HTTP::Get.new(url)
     authentication.basic_auth username, password
@@ -186,7 +193,7 @@ class Updater < Config
       update_ip(new_ip)
     end
     #parse response
-    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body)
+    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body; puts "Trying again"; sleep 15; update_ip(new_ip))
 
     # call to check again
     check_ip
@@ -197,5 +204,4 @@ installation_keywords = ["-i", "--install"]
 dynaruby = Updater.new
 installation_keywords.include?(ARGV[0]) ? (puts "Starting installation..."; dynaruby.start_installation) : nil
 File.exist?("/etc/dynaruby.conf") ? (puts "Starting updater..."; dynaruby.check_ip) : (puts "Config not found..   Starting installation..."; dynaruby.start_installation)
-dyn_key = `echo $DYNARUBY_KEY`
-`DYNARUBY_KEY=#{dyn_key} ./final.rb`
+puts "Please, reload the shell first and enable the service as needed"
