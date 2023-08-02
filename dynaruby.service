@@ -1,0 +1,13 @@
+[Unit]
+Description = "Dynaruby DDNS Client"
+After = network.target
+
+[Service]
+Environment="DYNARUBY_KEY=1iMTy3kNSpp4SugBsI66glWsIVs37PiQUpze4cvAT8E=,qWOwD7xVyNITW14B/NNKBQ=="
+ExecStart = /usr/local/sbin/dynaruby
+Restart = always
+Type = simple
+User = root
+
+[Install]
+WantedBy = multi-user.target
