@@ -149,7 +149,7 @@ class Config
     p "merged_key_iv: #{merged_key_iv}"
     !File.exist?("#{Dir.pwd}/dynaruby.rcd") ? download_rcd_script : nil
     dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd").map(&:chomp)
-    dynaruby_rcd[13] = "env DYNARUBY_KEY=#{merged_key_iv} ${daemon}"
+    dynaruby_rcd[8] = "env DYNARUBY_KEY=#{merged_key_iv} ${daemon}"
     File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
       dynaruby_rcd.each { |line| file.puts(line) }
     end
