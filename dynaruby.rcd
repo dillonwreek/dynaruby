@@ -1,10 +1,9 @@
 #!/bin/sh
 
+. /etc/rc.subr
+
 daemon="/usr/local/sbin/dynaruby"
 name="dynaruby"
-rcvar=${name}_enable
-
-load_rc_config $name
 
 start_cmd="${name}_start"
 stop_cmd=":"
