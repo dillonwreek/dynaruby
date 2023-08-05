@@ -48,11 +48,13 @@ class Config
   end
 
   def config_found
+    catch_ctrl_c
     puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
     yes_or_no ? set_args : (puts "Aborting..."; exit 130) #branchless confirmation
   end
 
   def yes_or_no
+    catch_ctrl_c
     positive_answers = ["y", "yes"]
     negative_answers = ["n", "no"]
     result = nil
@@ -65,6 +67,7 @@ class Config
   end
 
   def set_args
+    catch_ctrl_c
     config = []
     puts "Let's get started setting up the config"
     #Config file is structured as follows:
@@ -84,16 +87,14 @@ class Config
     puts "Please input username:"
     config[2] = "username="
     config[3] = STDIN.gets.chomp
-    puts "Please input password (noecho):"
+    puts "Please input password:"
     config[4] = "password="
     config[5] = STDIN.noecho(&:gets).chomp
     config[6] = "hostnames="
-    number_of_hostnames = 0
     puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
     until config.last == ""
-      p = "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
       config << STDIN.gets.chomp
-      config.last == "d" && config.size > 5 ? (puts "hostname removed."; config.pop; config.pop; number_of_hostnames -= 1) : nil
+      config.last == "d" && config.size > 5 ? (puts "hostname removed."; config.pop; config.pop) : nil
     end
     config.pop
 
@@ -110,23 +111,20 @@ class Config
   end
 
   def copy_script
-    File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
-    File.exist?("/etc/systemd/system/dynaruby.service") ? FileUtils.rm("/etc/systemd/system/dynaruby.service") : nil
     FileUtils.copy("#{Dir.pwd}/dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
     os == "linux" ? FileUtils.copy("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
     puts "Successfully installed Dynaruby!"
   end
 
   def write_env_to_shell(merged_key_iv)
-    os == "linux" ? write_service_script(merged_key_iv) : os == "bsd" ? write_rcd_script(merged_key_iv) : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
+    os == "linux" ? write_service : os == "bsd" ? write_rcd : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
   end
 
-  def write_service_script(merged_key_iv)
-    p "merged_key_iv: #{merged_key_iv}"
+  def write_service(m)
     !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
     dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
-    dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
-    File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
+    dynaruby_service[6] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+    File.open("/etc/systemd/system/dynaruby.service", "w") do |file|
       dynaruby_service.each { |line| file.puts(line) }
     end
   end
@@ -145,27 +143,8 @@ class Config
     end
   end
 
-  def write_rcd_script(merged_key_iv)
-    p "merged_key_iv: #{merged_key_iv}"
-    !File.exist?("#{Dir.pwd}/dynaruby.rcd") ? download_rcd_script : nil
-    dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd").map(&:chomp)
-    dynaruby_rcd[14] = "env DYNARUBY_KEY=#{merged_key_iv} ${daemon}"
-    File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
-      dynaruby_rcd.each { |line| file.puts(line) }
-    end
-  end
-
-  def download_rcd_script
-    begin
-      dynaruby_rcd_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
-    rescue StandardError => error
-      puts "Error downloading the rcd script: #{error}, try again?"; yes_or_no ? download_rcd_script : (puts "Aborting..."; exit 130)
-    end
-    puts "Successfully downloaded the rcd script!"
-    dynaruby_rcd_lines = dynaruby_rcd_raw.split("\n")
-    File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
-      dynaruby_rcd_lines.each { |line| file.puts(line) }
-    end
+  def write_rcd
+    #todo
   end
 
   def os
@@ -208,7 +187,7 @@ class Updater
     rescue StandardError => error
       puts "Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again"
       sleep config.sleep_time_in_minutes
-      check_ip_change(config)
+      check_ip_change
     end
     case @last_ip
     when nil
@@ -236,10 +215,10 @@ class Updater
       update_ip(config, new_ip)
     end
     #parse response
-    response.body.include?("nochg") ? (puts "IP unchanged, NOIP parsed the request and found that the IPs are the same") : response.body.include?("good") ? (puts "IP updated, NOIP acknowledged the change") : (puts "Something went wrong updating the IP. The response from NOIP was:"; puts response.body; puts "Trying again"; sleep 15; update_ip(config, new_ip))
+    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body; puts "Trying again"; sleep 15; update_ip(config, new_ip))
 
     # call to check again
-    check_ip_change(config)
+    check_ip(config)
   end
 end
 
