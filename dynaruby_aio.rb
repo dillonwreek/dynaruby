@@ -162,7 +162,7 @@ class Config
       puts "Error downloading the rcd script: #{error}, try again?"; yes_or_no ? download_rcd_script : (puts "Aborting..."; exit 130)
     end
     puts "Successfully downloaded the rcd script!"
-    dynaruby_rcd_lines = dynaruby_rcd_raw.split("\n")
+    dynaruby_rcd_lines = dynaruby_rcd_raw.response.body.split("\n")
     File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
       dynaruby_rcd_lines.each { |line| file.puts(line) }
     end
