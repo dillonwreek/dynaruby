@@ -1,22 +1,12 @@
 #!/bin/sh
 
+daemon="/usr/local/sbin/dynaruby"
+
 . /etc/rc.d/rc.subr
 
-daemon="/usr/local/sbin/dynaruby"
-name="dynaruby"
-
-start_cmd="${name}_start"
-stop_cmd="${name}_stop"
-
-dynaruby_start()
+rc_start()
 {
-    echo "Starting ${name}."
-    env DYNARUBY_KEY=1234 ${daemon}
-}
-dynaruby_stop()
-{
-    echo "Stopping ${name}."
-    killproc ${name}
+    var DYNARUBY_KEY="1234" ${daemon}
 }
 
-run_rc_command "\$1"
+rc_cmd $1
