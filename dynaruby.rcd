@@ -5,9 +5,6 @@ name="dynaruby"
 
 . /etc/rc.d/rc.subr
 
-rc_start()
-{
-    var DYNARUBY_KEY="1234" ${daemon}
-}
+export DYNARUBY_KEY=''
 
 rc_cmd $1
