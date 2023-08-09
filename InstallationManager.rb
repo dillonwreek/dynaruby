@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
 module InstallationManager
+  def start
+    puts "hell"
+  end
+
   def os
     case RUBY_PLATFORM
     when /darwin/
@@ -11,3 +15,5 @@ module InstallationManager
     end
   end
 end
+
+start

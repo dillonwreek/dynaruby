@@ -74,7 +74,7 @@ module Installer
       config_file.write("#{arg}\n")
     end
     config_file.close
-    puts "Config written to /etsc/dynaruby.conf"
+    puts "Config written to /etc/dynaruby.conf"
 
     copy_script
   end

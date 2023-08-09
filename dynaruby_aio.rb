@@ -180,6 +180,7 @@ class Config
     key = OpenSSL::Random.random_bytes(32)
     iv = OpenSSL::Random.random_bytes(16)
     merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
+    p "merged_key_iv: #{merged_key_iv}"
     write_env_to_shell(merged_key_iv)
     cipher.key = key
     cipher.iv = iv
@@ -236,7 +237,12 @@ class Updater
       update_ip(config, new_ip)
     end
     #parse response
-    response.body.include?("nochg") ? (puts "IP unchanged, NOIP parsed the request and found that the IPs are the same") : response.body.include?("good") ? (puts "IP updated, NOIP acknowledged the change") : (puts "Something went wrong updating the IP. The response from NOIP was:"; puts response.body; puts "Trying again"; sleep 15; update_ip(config, new_ip))
+    log = ""
+    response.body.include?("nochg") ? (log = "IP unchanged, NOIP parsed the request and found that the IPs are the same") : response.body.include?("good") ? (log = "IP updated, NOIP acknowledged the change") : (p "Something went wrong updating the IP. The response from NOIP was: " + response.body; puts "Trying again"; sleep 15; update_ip(config, new_ip))
+    p log
+    File.open("/var/log/dynaruby.log", "a") do |file|
+      file.write("#{log}\n")
+    end
 
     # call to check again
     check_ip_change(config)
