@@ -7,133 +7,30 @@ require "openssl"
 require "net/http"
 require "uri"
 
-def catch_ctrl_c
-  Signal.trap("INT") { puts " Stopping..."; exit 130 } #gracefully exit
-end
-
-module Installer
-  def start_installation
-    !File.exist?("/etc/dynaruby.conf") ? set_args : config_found
-  end
-
-  def config_found
-    catch_ctrl_c
-    puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
-    yes_or_no ? set_args : (puts "Aborting..."; exit 130) #branchless confirmation
-  end
-
-  def yes_or_no
-    catch_ctrl_c
-    positive_answers = ["y", "yes"]
-    negative_answers = ["n", "no"]
-    result = nil
-    until result == true || result == false
-      @answer = STDIN.gets.downcase.chomp
-      #branchless way of checking for y or n + invalid input
-      result = positive_answers.include?(@answer) ? true : negative_answers.include?(@answer) ? false : (puts "Please choose either y(es) or n(o) to confirm."; nil)
-    end
-    result
-  end
-
-  def set_args
-    catch_ctrl_c
-    config = []
-    puts "Let's get started setting up the config"
-    #Config file is structured as follows:
-    #time=
-    #input
-    #username=
-    #input
-    #password=
-    #input
-    #hostnames=
-    #input
-    #input
-
-    puts "Please input the frequency of the check for an ip change in minutes:"
-    config[0] = "time="
-    config[1] = STDIN.gets.chomp.to_i
-    puts "Please input username:"
-    config[2] = "username="
-    config[3] = STDIN.gets.chomp
-    puts "Please input password:"
-    config[4] = "password="
-    config[5] = STDIN.noecho(&:gets).chomp
-    config[6] = "hostnames="
-    puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
-    until config.last == ""
-      config << STDIN.gets.chomp
-      config.last == "d" && config.size > 5 ? (puts "hostname removed."; config.pop; config.pop) : nil
-    end
-    config.pop
-
-    config[5] = encrypt(config[5])
-
-    config_file = File.open("/etc/dynaruby.conf", "w")
-    config.each do |arg|
-      config_file.write("#{arg}\n")
-    end
-    config_file.close
-    puts "Config written to /etc/dynaruby.conf"
-
-    copy_script
-  end
-
-  def copy_script
-    FileUtils.copy("./dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
-    os == "linux" ? FileUtils.copy("./dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
-    puts "Successfully installed Dynaruby!"
-  end
-
-  private
-
-  def encrypt(password)
-    cipher = OpenSSL::Cipher::AES.new(256, :CBC)
-    cipher.encrypt
-    key = OpenSSL::Random.random_bytes(32)
-    iv = OpenSSL::Random.random_bytes(16)
-    merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
-    write_env_to_shell(merged_key_iv)
-    cipher.key = key
-    cipher.iv = iv
-    encrypted_pswd = cipher.update(password) + cipher.final
-    encoded_pswd = Base64.strict_encode64(encrypted_pswd)
-  end
-
-  def write_env_to_shell(merged_key_iv)
-    os == "linux" ? write_service : os == "bsd" ? write_rcd : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
-  end
-
-  def write_service
-    !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
-    dynaruby_service = File.readlines("dynaruby.service").map(&:chomp)
-    dynaruby_service[6] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
-    File.open("/etc/systemd/system/dynaruby.service", "w") do |file|
-      dynaruby_service.each { |line| file.puts(line) }
+class Client
+  def initialize
+    if ARGV[0] == "-install" || ARGV[0] == "-i" || !File.exist?("/etc/dynaruby.conf")
+      @mode = "Install"
+    else
+      @mode = "Update"
     end
   end
 
-  def download_service_script
-  end
-
-  def write_rcd
-    #todo
-  end
-
-  def os
-    RUBY_PLATFORM.include?("linux") ? "linux" : RUBY_PLATFORM.include?("bsd") ? "bsd" : RUBY_PLATFORM.include?("darwin") ? (puts "macOS is not supported."; exit 130) : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
+  def mode
+    @mode
   end
 end
 
 class Config
-  include Installer
-
   def initialize
-    File.exist?("/etc/dynaruby.conf") ? @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp) : @config_file = false
-    @last_ip = nil
+    if File.exist?("/etc/dynaruby.conf")
+      @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp)
+    else
+      @config_file = nil
+    end
   end
 
-  def sleep_time
+  def sleep_time_in_minutes
     @config_file[1].to_i
   end
 
@@ -149,59 +46,78 @@ class Config
     @config_file[7..-1]
   end
 
-  private
+  def start_installation
+    !File.exist?("/etc/dynaruby.conf") ? set_args : config_found
+  end
 
-  def decrypt(encrypted_password)
-    decipher = OpenSSL::Cipher::AES.new(256, :CBC)
-    decipher.decrypt
-    merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
-    decipher.key = Base64.decode64(merged_key_iv_array[0])
-    decipher.iv = Base64.decode64(merged_key_iv_array[1])
-    decrypted_pswd = decipher.update(Base64.decode64(encrypted_password)) + decipher.final
+  def config_found
+    puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
+    if yes_or_no
+      set_args
+    else
+      puts "Aborting..."; exit 130
+    end
+  end
+
+  def yes_or_no
+    loop do
+      answer = STDIN.gets.downcase.chomp
+      return true if answer == "y" || answer == "yes"
+      return false if answer == "n" || answer == "no"
+      puts "Please choose either y(es) or n(o)"
+    end
+  end
+
+  def set_args
+    config[]
+    puts "Let's get started setting up the config"
+    #Config file is structured as follows:
+    #time=
+    #input
+    #username=
+    #input
+    #password=
+    #input
+    #hostnames=
+    #input
+    #input
+    #..
+
+    puts "Please input the frequency of the check for an ip change in minutes:"
+    config[0] = "time="
+    config[1] = STDIN.gets.chomp.to_i
+    puts "Please input username:"
+    config[2] = "username="
+    config[3] = STDIN.gets.chomp
+    puts "Please input password (noecho):"
+    config[4] = "password="
+    config[5] = encrypt(STDIN.noecho(&:gets).chomp)
+    config[6] = "hostnames="
+    number_of_hostnames = 0
+    puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
+    until config.last == ""
+      p "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
+      config << STDIN.gets.chomp
+      if config.last == "d" && config.size > 5
+        puts "hostname removed."
+        config.pop
+        config.pop
+        number_of_hostnames -= 1
+      end
+    end
+    config.pop
+
+    config_file = File.open("/etc/dynaruby.conf", "w")
+    config.each do |arg|
+      config_file.write("#{arg}\n")
+    end
+    config_file.close
+    puts "Config written to /etc/dynaruby.conf"
+    copy_script
+  end
+
+  def copy_script
+    puts "Copying script to /usr/local/bin"
+    File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
   end
 end
-
-class Updater < Config
-  def check_ip
-    catch_ctrl_c
-    begin
-      new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
-    rescue StandardError => error
-      puts "Error: #{error}.. Waiting for 1 minute and checking again"
-      sleep 60
-      check_ip
-    end
-
-    @last_ip == nil ? (puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(new_ip)) : @last_ip != new_ip ? (puts "IP changed from #{@last_ip} to #{new_ip}"; update_ip(new_ip)) : @last_ip == new_ip ? (puts "IP unchanged, sleeping for #{sleep_time} minutes and checking again"; sleep(sleep_time * 60); check_ip) : nil
-  end
-
-  def update_ip(new_ip)
-    # https request form stuff
-    p "hostnames = #{hostnames.join(" ")}"
-    url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{hostnames.join(" ")}&myip=#{new_ip}")
-    authentication = Net::HTTP::Get.new(url)
-    authentication.basic_auth username, password
-    authorization = Base64.encode64("#{username}:#{password}")
-    headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/openbsd-7.3" }
-
-    # response
-    begin
-      response = Net::HTTP.get_response(url, headers, authentication)
-    rescue StandardError => error
-      puts "Error: #{error}... Waiting for 1 minute and trying again"
-      sleep 60
-      update_ip(new_ip)
-    end
-    #parse response
-    response.body.include?("nochg") ? (puts "IP unchanged") : response.body.include?("good") ? (puts "IP updated") : (puts "Something went wrong updating IP"; puts response.body; puts "Trying again"; sleep 15; update_ip(new_ip))
-
-    # call to check again
-    check_ip
-  end
-end
-
-installation_keywords = ["-i", "--install"]
-dynaruby = Updater.new
-installation_keywords.include?(ARGV[0]) ? (puts "Starting installation..."; dynaruby.start_installation) : nil
-File.exist?("/etc/dynaruby.conf") ? (puts "Starting updater..."; dynaruby.check_ip) : (puts "Config not found..   Starting installation..."; dynaruby.start_installation)
-puts "Please, reload the shell first and enable the service as needed"
