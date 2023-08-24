@@ -119,5 +119,43 @@ class Config
   def copy_script
     puts "Copying script to /usr/local/bin"
     File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
+    FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
+    p "Successfully installed Dynaruby! The program will now install the appropriate service files"
+    copy_service
+  end
+
+  def copy_service
+    if os == "linux"
+      if File.exist?("#{Dir.pwd}/dynaruby.service")
+        FileUtils.copy("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
+      else
+        p "dynaruby.service not found, want to download it? [y(es)/n(o)]"
+        yes_or_no ? download_service(os) : (puts "Aborting..."; exit 130)
+      end
+    elsif os == "bsd"
+      if File.exist?("#{Dir.pwd}/dynaruby.rcd")
+        FileUtils.copy("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
+      else
+        p "dynaruby.rcd not found, want to download it? [y(es)/n(o)]"
+        yes_or_no ? download_service(os) : (puts "Aborting..."; exit 130)
+      end
+    end
+  end
+
+  def download_service(os)
+    if os == "linux"
+      begin
+        service = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
+      rescue StandardError => error
+        puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
+      end
+    elsif os == "bsd"
+      begin
+        service = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
+      rescue StandardError => error
+        puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
+      end
+      #continue
+    end
   end
 end
