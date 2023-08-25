@@ -124,6 +124,20 @@ class Config
     copy_service
   end
 
+  def write_env_to_service(os)
+    if os == "linux"
+      p "merged_key_iv: #{merged_key_iv}"
+      !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
+      dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
+      dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+      File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
+        dynaruby_service.each { |line| file.puts(line) }
+      end
+    elsif os == "bsd"
+      #todo
+    end
+  end
+
   def copy_service
     if os == "linux"
       if File.exist?("#{Dir.pwd}/dynaruby.service")
@@ -145,17 +159,23 @@ class Config
   def download_service(os)
     if os == "linux"
       begin
-        service = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
+        service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
       rescue StandardError => error
         puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
       end
+      service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
     elsif os == "bsd"
       begin
-        service = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
+        service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
       rescue StandardError => error
         puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
       end
-      #continue
+      service_file = File.open("#{Dir.pwd}/dynaruby.rcd", "w")
     end
+    service_lines = service_raw.response.body.split("\n")
+    service_lines.each { |line| service_file.puts(line) }
+    service_file.close
+    puts "Successfully downloaded the service script!"
+    copy_service
   end
 end
