@@ -124,10 +124,13 @@ class Config
     copy_service
   end
 
-  def write_env_to_service(os)
+  def write_env_to_service(os, merged_key_iv)
     if os == "linux"
       p "merged_key_iv: #{merged_key_iv}"
-      !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
+      if !File.exist?("#{Dir.pwd}/dynaruby.service")
+        puts "Service file not found. Downloading service script..."
+        download_service(os)
+      end
       dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
       dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
       File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
@@ -139,20 +142,13 @@ class Config
   end
 
   def copy_service
+    puts "Copying service script"
     if os == "linux"
-      if File.exist?("#{Dir.pwd}/dynaruby.service")
-        FileUtils.copy("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
-      else
-        p "dynaruby.service not found, want to download it? [y(es)/n(o)]"
-        yes_or_no ? download_service(os) : (puts "Aborting..."; exit 130)
-      end
+      FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
     elsif os == "bsd"
-      if File.exist?("#{Dir.pwd}/dynaruby.rcd")
-        FileUtils.copy("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
-      else
-        p "dynaruby.rcd not found, want to download it? [y(es)/n(o)]"
-        yes_or_no ? download_service(os) : (puts "Aborting..."; exit 130)
-      end
+      FileUtils.mv("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
+    else
+      puts "Unsupported OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}. You can use cron if you're inclined."
     end
   end
 
@@ -176,6 +172,60 @@ class Config
     service_lines.each { |line| service_file.puts(line) }
     service_file.close
     puts "Successfully downloaded the service script!"
-    copy_service
+  end
+
+  private
+
+  def encrypt(password)
+    cipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    cipher.encrypt
+    key = OpenSSL::Random.random_bytes(32)
+    iv = OpenSSL::Random.random_bytes(16)
+    merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
+    puts "THIS KEY IS FUNDAMENTAL TO DECRYPT YOUR NO-IP PASSWORD. DO NOT SHARE IT WITH ANYONE"
+    puts "DYNARUBY_KEY: #{merged_key_iv}"
+    cipher.key = key
+    cipher.iv = iv
+    encrypted_pswd = cipher.update(password) + cipher.final
+    encoded_pswd = Base64.encode64(encrypted_pswd)
+  end
+
+  def decrypt(password)
+    decipher = OpenSSL::Cipher::AES.new(256, :CBC)
+    decipher.decrypt
+    begin
+      merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
+    rescue StandardError => error
+      puts "Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."; exit 130
+    end
+    decipher.key = Base64.decode64(merged_key_iv_array[0])
+    decipher.iv = Base64.decode64(merged_key_iv_array[1])
+    decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
+  end
+end
+
+class Updater
+  def initialize
+    @last_ip = nil
+  end
+
+  def check_ip_change(config)
+    begin
+      new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
+    rescue StandardError => error
+      puts "Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again"
+      sleep config.sleep_time_in_minutes
+      check_ip_change(config)
+    end
+    case @last_ip
+    when nil
+      @last_ip = new_ip
+      puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(config, new_ip)
+    when new_ip
+      puts "IP did not change, waiting for #{config.sleep_time_in_minutes} minutes and checking again"
+      sleep config.sleep_time_in_minutes; check_ip_change(config)
+    else
+      puts "IP changed, updating from #{@last_ip} to #{new_ip}"; @last_ip = new_ip; update_ip(config, new_ip)
+    end
   end
 end
