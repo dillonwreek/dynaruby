@@ -7,6 +7,11 @@ require "openssl"
 require "net/http"
 require "uri"
 
+def logger(phrase)
+  puts phrase
+  File.open("/var/log/dynaruby.log", "a") { |file| file.puts(phrase) }
+end
+
 class Client
   def initialize
     if ARGV[0] == "-install" || ARGV[0] == "-i" || !File.exist?("/etc/dynaruby.conf")
@@ -55,7 +60,7 @@ class Config
     if yes_or_no
       set_args
     else
-      puts "Aborting..."; exit 130
+      puts "Aborting..."; abort "User aborted"
     end
   end
 
@@ -70,7 +75,7 @@ class Config
 
   def set_args
     config[]
-    puts "Let's get started setting up the config"
+    logger("Let's get started setting up the config")
     #Config file is structured as follows:
     #time=
     #input
@@ -85,7 +90,7 @@ class Config
 
     puts "Please input the frequency of the check for an ip change in minutes:"
     config[0] = "time="
-    config[1] = STDIN.gets.chomp.to_i
+    config[1] = STDIN.gets.chomp.to_i * 60
     puts "Please input username:"
     config[2] = "username="
     config[3] = STDIN.gets.chomp
@@ -112,15 +117,15 @@ class Config
       config_file.write("#{arg}\n")
     end
     config_file.close
-    puts "Config written to /etc/dynaruby.conf"
+    logger("Config written to /etc/dynaruby.conf")
     copy_script
   end
 
   def copy_script
-    puts "Copying script to /usr/local/bin"
+    logger("Copying script to /usr/local/bin")
     File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
     FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
-    p "Successfully installed Dynaruby! The program will now install the appropriate service files"
+    logger("Successfully installed Dynaruby! The program will now install the appropriate service files")
     copy_service
   end
 
@@ -128,7 +133,7 @@ class Config
     if os == "linux"
       p "merged_key_iv: #{merged_key_iv}"
       if !File.exist?("#{Dir.pwd}/dynaruby.service")
-        puts "Service file not found. Downloading service script..."
+        logger("Service file not found. Downloading service script...")
         download_service(os)
       end
       dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
@@ -142,13 +147,13 @@ class Config
   end
 
   def copy_service
-    puts "Copying service script"
+    logger("Copying service script")
     if os == "linux"
       FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
     elsif os == "bsd"
       FileUtils.mv("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
     else
-      puts "Unsupported OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}. You can use cron if you're inclined."
+      logger("Unsupported OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}. You can use cron if you're inclined.")
     end
   end
 
@@ -157,21 +162,21 @@ class Config
       begin
         service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
       rescue StandardError => error
-        puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
+        logger("Error downloading the service script: #{error}, try again?"); yes_or_no ? download_service : (puts "Aborting..."; abort "User aborted")
       end
       service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
     elsif os == "bsd"
       begin
         service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
       rescue StandardError => error
-        puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service : (puts "Aborting..."; exit 130)
+        logger("Error downloading the service script: #{error}, try again?"); yes_or_no ? download_service : (puts "Aborting..."; abort "User aborted")
       end
       service_file = File.open("#{Dir.pwd}/dynaruby.rcd", "w")
     end
     service_lines = service_raw.response.body.split("\n")
     service_lines.each { |line| service_file.puts(line) }
     service_file.close
-    puts "Successfully downloaded the service script!"
+    logger("Successfully downloaded the service script!")
   end
 
   private
@@ -196,7 +201,7 @@ class Config
     begin
       merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
     rescue StandardError => error
-      puts "Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."; exit 130
+      logger("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "INVALID DYNARUBY_KEY"
     end
     decipher.key = Base64.decode64(merged_key_iv_array[0])
     decipher.iv = Base64.decode64(merged_key_iv_array[1])
@@ -213,19 +218,56 @@ class Updater
     begin
       new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
     rescue StandardError => error
-      puts "Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again"
+      logger("Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again")
       sleep config.sleep_time_in_minutes
       check_ip_change(config)
     end
     case @last_ip
     when nil
       @last_ip = new_ip
-      puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(config, new_ip)
+      logger("IP was nil. Changing to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
     when new_ip
-      puts "IP did not change, waiting for #{config.sleep_time_in_minutes} minutes and checking again"
+      logger("IP did not change, waiting for #{config.sleep_time_in_minutes} minutes and checking again")
       sleep config.sleep_time_in_minutes; check_ip_change(config)
     else
-      puts "IP changed, updating from #{@last_ip} to #{new_ip}"; @last_ip = new_ip; update_ip(config, new_ip)
+      logger("IP changed, updating from #{@last_ip} to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
     end
   end
+
+  def update_ip(config, new_ip)
+    url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{config.hostnames.join(" ")}&myip=#{new_ip}")
+    authentication = Net::HTTP::Get.new(url)
+    authentication.basic_auth config.username, config.password
+    authorization = Base64.encode64("#{config.username}:#{config.password}")
+    headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/openbsd-7.3" }
+
+    # response
+    begin
+      response = Net::HTTP.get_response(url, headers, authentication)
+    rescue StandardError => error
+      logger("Error: #{error}... Waiting for 1 minute and trying again")
+      sleep 60
+      update_ip(config, new_ip)
+    end
+    if response.body.include?("nochg")
+      logger("NO-IP parsed the request and found the IP is unchanged")
+    elsif response.body.include?("good")
+      logger("NO-IP acknowledged the change. IP updated")
+    else
+      logger("Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
+      sleep 15; update_ip(config, new_ip)
+    end
+    # call to check again
+    check_ip_change(config)
+  end
+end
+
+dynaruby = Client.new
+config = Config.new
+updater = Updater.new
+
+if dynaruby.mode == "Install"
+  config.start_installation
+elsif dynaruby.mode == "Update"
+  updater.check_ip_change(config)
 end

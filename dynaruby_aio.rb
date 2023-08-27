@@ -7,9 +7,13 @@ require "openssl"
 require "net/http"
 require "uri"
 
+def logger(phrase)
+  puts phrase
+  File.open("/var/log/dynaruby.log", "a") { |file| file.puts(phrase) }
+end
+
 class Client
   def initialize
-    puts "Initializing..."
     if ARGV[0] == "-install" || ARGV[0] == "-i" || !File.exist?("/etc/dynaruby.conf")
       @mode = "Install"
     else
@@ -24,11 +28,15 @@ end
 
 class Config
   def initialize
-    File.exist?("/etc/dynaruby.conf") ? @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp) : @config_file = false
+    if File.exist?("/etc/dynaruby.conf")
+      @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp)
+    else
+      @config_file = nil
+    end
   end
 
   def sleep_time_in_minutes
-    @config_file[1].to_i * 60
+    @config_file[1].to_i
   end
 
   def username
@@ -49,24 +57,25 @@ class Config
 
   def config_found
     puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
-    yes_or_no ? set_args : (puts "Aborting..."; exit 130) #branchless confirmation
+    if yes_or_no
+      set_args
+    else
+      puts "Aborting..."; abort "User aborted"
+    end
   end
 
   def yes_or_no
-    positive_answers = ["y", "yes"]
-    negative_answers = ["n", "no"]
-    result = nil
-    until result == true || result == false
-      @answer = STDIN.gets.downcase.chomp
-      #branchless way of checking for y or n + invalid input
-      result = positive_answers.include?(@answer) ? true : negative_answers.include?(@answer) ? false : (puts "Please choose either y(es) or n(o) to confirm."; nil)
+    loop do
+      answer = STDIN.gets.downcase.chomp
+      return true if answer == "y" || answer == "yes"
+      return false if answer == "n" || answer == "no"
+      puts "Please choose either y(es) or n(o)"
     end
-    result
   end
 
   def set_args
-    config = []
-    puts "Let's get started setting up the config"
+    config[]
+    logger("Let's get started setting up the config")
     #Config file is structured as follows:
     #time=
     #input
@@ -77,99 +86,97 @@ class Config
     #hostnames=
     #input
     #input
+    #..
 
     puts "Please input the frequency of the check for an ip change in minutes:"
     config[0] = "time="
-    config[1] = STDIN.gets.chomp.to_i
+    config[1] = STDIN.gets.chomp.to_i * 60
     puts "Please input username:"
     config[2] = "username="
     config[3] = STDIN.gets.chomp
     puts "Please input password (noecho):"
     config[4] = "password="
-    config[5] = STDIN.noecho(&:gets).chomp
+    config[5] = encrypt(STDIN.noecho(&:gets).chomp)
     config[6] = "hostnames="
     number_of_hostnames = 0
     puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
     until config.last == ""
-      p = "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
+      p "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
       config << STDIN.gets.chomp
-      config.last == "d" && config.size > 5 ? (puts "hostname removed."; config.pop; config.pop; number_of_hostnames -= 1) : nil
+      if config.last == "d" && config.size > 5
+        puts "hostname removed."
+        config.pop
+        config.pop
+        number_of_hostnames -= 1
+      end
     end
     config.pop
-
-    config[5] = encrypt(config[5])
 
     config_file = File.open("/etc/dynaruby.conf", "w")
     config.each do |arg|
       config_file.write("#{arg}\n")
     end
     config_file.close
-    puts "Config written to /etc/dynaruby.conf"
-
+    logger("Config written to /etc/dynaruby.conf")
     copy_script
   end
 
   def copy_script
+    logger("Copying script to /usr/local/bin")
     File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
-    File.exist?("/etc/systemd/system/dynaruby.service") ? FileUtils.rm("/etc/systemd/system/dynaruby.service") : nil
-    FileUtils.copy("#{Dir.pwd}/dynaruby_aio.rb", "/usr/local/sbin/dynaruby")
-    os == "linux" ? FileUtils.copy("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service") : os == "bsd" ? FileUtils.copy("./dynaruby.rcd", "/etc/rc.d/dynaruby") : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
-    puts "Successfully installed Dynaruby!"
+    FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
+    logger("Successfully installed Dynaruby! The program will now install the appropriate service files")
+    copy_service
   end
 
-  def write_env_to_shell(merged_key_iv)
-    os == "linux" ? write_service_script(merged_key_iv) : os == "bsd" ? write_rcd_script(merged_key_iv) : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
-  end
-
-  def write_service_script(merged_key_iv)
-    p "merged_key_iv: #{merged_key_iv}"
-    !File.exist?("#{Dir.pwd}/dynaruby.service") ? download_service_script : nil
-    dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
-    dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
-    File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
-      dynaruby_service.each { |line| file.puts(line) }
+  def write_env_to_service(os, merged_key_iv)
+    if os == "linux"
+      p "merged_key_iv: #{merged_key_iv}"
+      if !File.exist?("#{Dir.pwd}/dynaruby.service")
+        logger("Service file not found. Downloading service script...")
+        download_service(os)
+      end
+      dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
+      dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+      File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
+        dynaruby_service.each { |line| file.puts(line) }
+      end
+    elsif os == "bsd"
+      #todo
     end
   end
 
-  def download_service_script
-    begin
-      dynaruby_service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
-    rescue StandardError => error
-      puts "Error downloading the service script: #{error}, try again?"; yes_or_no ? download_service_script : (puts "Aborting..."; exit 130)
-    end
-    puts "Successfully downloaded the service script!"
-
-    dynaruby_service_lines = dynaruby_service_raw.response.body.split("\n")
-    File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
-      dynaruby_service_lines.each { |line| file.puts(line) }
+  def copy_service
+    logger("Copying service script")
+    if os == "linux"
+      FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
+    elsif os == "bsd"
+      FileUtils.mv("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
+    else
+      logger("Unsupported OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}. You can use cron if you're inclined.")
     end
   end
 
-  def write_rcd_script(merged_key_iv)
-    p "merged_key_iv: #{merged_key_iv}"
-    !File.exist?("#{Dir.pwd}/dynaruby.rcd") ? download_rcd_script : nil
-    dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd").map(&:chomp)
-    dynaruby_rcd[7] = "env DYNARUBY_KEY='#{merged_key_iv}'\n"
-    File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
-      dynaruby_rcd.each { |line| file.puts(line) }
+  def download_service(os)
+    if os == "linux"
+      begin
+        service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
+      rescue StandardError => error
+        logger("Error downloading the service script: #{error}, try again?"); yes_or_no ? download_service : (puts "Aborting..."; abort "User aborted")
+      end
+      service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
+    elsif os == "bsd"
+      begin
+        service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
+      rescue StandardError => error
+        logger("Error downloading the service script: #{error}, try again?"); yes_or_no ? download_service : (puts "Aborting..."; abort "User aborted")
+      end
+      service_file = File.open("#{Dir.pwd}/dynaruby.rcd", "w")
     end
-  end
-
-  def download_rcd_script
-    begin
-      dynaruby_rcd_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
-    rescue StandardError => error
-      puts "Error downloading the rcd script: #{error}, try again?"; yes_or_no ? download_rcd_script : (puts "Aborting..."; exit 130)
-    end
-    puts "Successfully downloaded the rcd script!"
-    dynaruby_rcd_lines = dynaruby_rcd_raw.response.body.split("\n")
-    File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
-      dynaruby_rcd_lines.each { |line| file.puts(line) }
-    end
-  end
-
-  def os
-    RUBY_PLATFORM.include?("linux") ? "linux" : RUBY_PLATFORM.include?("bsd") ? "bsd" : RUBY_PLATFORM.include?("darwin") ? (puts "macOS is not supported."; exit 130) : (puts "Unrecognized OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}")
+    service_lines = service_raw.response.body.split("\n")
+    service_lines.each { |line| service_file.puts(line) }
+    service_file.close
+    logger("Successfully downloaded the service script!")
   end
 
   private
@@ -179,22 +186,26 @@ class Config
     cipher.encrypt
     key = OpenSSL::Random.random_bytes(32)
     iv = OpenSSL::Random.random_bytes(16)
-    merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
-    p "merged_key_iv: #{merged_key_iv}"
-    write_env_to_shell(merged_key_iv)
+    merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
+    puts "THIS KEY IS FUNDAMENTAL TO DECRYPT YOUR NO-IP PASSWORD. DO NOT SHARE IT WITH ANYONE"
+    puts "DYNARUBY_KEY: #{merged_key_iv}"
     cipher.key = key
     cipher.iv = iv
     encrypted_pswd = cipher.update(password) + cipher.final
-    encoded_pswd = Base64.strict_encode64(encrypted_pswd)
+    encoded_pswd = Base64.encode64(encrypted_pswd)
   end
 
-  def decrypt(encrypted_password)
+  def decrypt(password)
     decipher = OpenSSL::Cipher::AES.new(256, :CBC)
     decipher.decrypt
-    merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
+    begin
+      merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
+    rescue StandardError => error
+      logger("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "INVALID DYNARUBY_KEY"
+    end
     decipher.key = Base64.decode64(merged_key_iv_array[0])
     decipher.iv = Base64.decode64(merged_key_iv_array[1])
-    decrypted_pswd = decipher.update(Base64.decode64(encrypted_password)) + decipher.final
+    decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
   end
 end
 
@@ -207,17 +218,19 @@ class Updater
     begin
       new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
     rescue StandardError => error
-      puts "Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again"
+      logger("Error: #{error}.. Waiting for #{config.sleep_time_in_minutes} minutes and checking again")
       sleep config.sleep_time_in_minutes
       check_ip_change(config)
     end
     case @last_ip
     when nil
-      puts "IP was nil. Changing to #{new_ip}"; @last_ip = new_ip; update_ip(config, new_ip)
+      @last_ip = new_ip
+      logger("IP was nil. Changing to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
     when new_ip
-      puts "IP unchanged, sleeping for #{config.sleep_time_in_minutes} minutes and checking again"; sleep config.sleep_time_in_minutes; check_ip_change(config)
+      logger("IP did not change, waiting for #{config.sleep_time_in_minutes} minutes and checking again")
+      sleep config.sleep_time_in_minutes; check_ip_change(config)
     else
-      puts "IP changed, updating from #{@last_ip} to #{new_ip}"; update_ip(config, new_ip)
+      logger("IP changed, updating from #{@last_ip} to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
     end
   end
 
@@ -232,18 +245,18 @@ class Updater
     begin
       response = Net::HTTP.get_response(url, headers, authentication)
     rescue StandardError => error
-      puts "Error: #{error}... Waiting for 1 minute and trying again"
+      logger("Error: #{error}... Waiting for 1 minute and trying again")
       sleep 60
       update_ip(config, new_ip)
     end
-    #parse response
-    log = ""
-    response.body.include?("nochg") ? (log = "IP unchanged, NOIP parsed the request and found that the IPs are the same") : response.body.include?("good") ? (log = "IP updated, NOIP acknowledged the change") : (p "Something went wrong updating the IP. The response from NOIP was: " + response.body; puts "Trying again"; sleep 15; update_ip(config, new_ip))
-    p log
-    File.open("/var/log/dynaruby.log", "a") do |file|
-      file.write("#{log}\n")
+    if response.body.include?("nochg")
+      logger("NO-IP parsed the request and found the IP is unchanged")
+    elsif response.body.include?("good")
+      logger("NO-IP acknowledged the change. IP updated")
+    else
+      logger("Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
+      sleep 15; update_ip(config, new_ip)
     end
-
     # call to check again
     check_ip_change(config)
   end
