@@ -9,7 +9,11 @@ require "uri"
 
 def logger(phrase)
   puts phrase
-  File.open("/var/log/dynaruby.log", "a") { |file| file.puts(phrase) }
+  begin
+    File.open("/var/log/dynaruby.log", "a") { |file| file.puts(phrase) }
+  rescue StandardError => error
+    abort "Error: #{error}"
+  end
 end
 
 class Client
@@ -74,7 +78,7 @@ class Config
   end
 
   def set_args
-    config[]
+    config = []
     logger("Let's get started setting up the config")
     #Config file is structured as follows:
     #time=
@@ -101,13 +105,18 @@ class Config
     number_of_hostnames = 0
     puts "Please input hostname(s), tell me you're done with an empty line. Submit d to delete the last inputted hostname"
     until config.last == ""
-      p "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
+      puts "Please input hostname number #{number_of_hostnames + 1}. Submit d to delete, or empty line to continue:"
       config << STDIN.gets.chomp
-      if config.last == "d" && config.size > 5
+      if config.last == "d" && number_of_hostnames > 0
         puts "hostname removed."
         config.pop
         config.pop
         number_of_hostnames -= 1
+      elsif (config.last == "" && number_of_hostnames < 1)
+        puts "There are no hostnames to delete."
+        config.pop
+      else
+        number_of_hostnames += 1
       end
     end
     config.pop
