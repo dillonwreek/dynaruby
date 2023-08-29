@@ -33,9 +33,7 @@ end
 class Config
   def initialize
     if File.exist?("/etc/dynaruby.conf")
-      @config_file = File.readlines("/etc/dynaruby.conf").map(&:chomp)
-    else
-      @config_file = nil
+      @config_file = File.readlines("/etc/dynaruby.conf", chomp: true)
     end
   end
 
@@ -56,19 +54,19 @@ class Config
   end
 
   def start_installation
-    !File.exist?("/etc/dynaruby.conf") ? set_args : config_found
+    !File.exist?("/etc/dynaruby.conf") ? prompt_args : config_found
   end
 
   def config_found
     puts "Config file already exists. Do you want to overwrite it? [y(es)/n(o)]"
-    if yes_or_no
-      set_args
+    if prompt_confirmation
+      prompt_args
     else
       puts "Aborting..."; abort "User aborted"
     end
   end
 
-  def yes_or_no
+  def prompt_confirmation
     loop do
       answer = STDIN.gets.downcase.chomp
       return true if answer == "y" || answer == "yes"
@@ -77,7 +75,7 @@ class Config
     end
   end
 
-  def set_args
+  def prompt_args
     config = []
     logger("Let's get started setting up the config")
     #Config file is structured as follows:
@@ -149,7 +147,7 @@ class Config
       download_service
     end
 
-    dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
+    dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service", chomp: true)
     dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
     File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
       dynaruby_service.each { |line| file.puts(line) }
@@ -160,7 +158,7 @@ class Config
     begin
       service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
     rescue StandardError => error
-      logger("Error downloading the service script: #{error}, try again?"); yes_or_no ? download_service : (puts "Aborting..."; abort "User aborted")
+      logger("Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (puts "Aborting..."; abort "User aborted")
     end
     service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
 
