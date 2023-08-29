@@ -1,5 +1,5 @@
 [Unit]
-Description = "Dynaruby DDNS Client"
+Description = "Dynaruby DDNS NO-IP Client"
 After = network.target
 
 [Service]
