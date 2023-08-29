@@ -215,8 +215,8 @@ class Updater
     begin
       new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
     rescue StandardError => error
-      logger("Error: #{error}.. Waiting for #{config.sleep_time_in_minutes / 60} minutes and checking again")
-      sleep config.sleep_time_in_minutes
+      logger("Error: #{error}.. Waiting for 1 minute and checking again")
+      sleep 60
       check_ip_change(config)
     end
     case @last_ip
@@ -247,14 +247,16 @@ class Updater
       update_ip(config, new_ip)
     end
     if response.body.include?("nochg")
-      logger("NO-IP parsed the request and found the IP is unchanged")
+      logger("NO-IP parsed the request and found the IP is unchanged.")
     elsif response.body.include?("good")
-      logger("NO-IP acknowledged the change. IP updated")
+      logger("NO-IP acknowledged the change. IP updated. Checking again in #{config.sleep_time_in_minutes / 60} minutes")
     else
       logger("Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
       sleep 15; update_ip(config, new_ip)
     end
     # call to check again
+    puts "Checking again in #{config.sleep_time_in_minutes / 60} minutes"
+    sleep config.sleep_time_in_minutes
     check_ip_change(config)
   end
 end
