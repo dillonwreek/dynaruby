@@ -55,6 +55,16 @@ class Config
     @config_file[7..-1]
   end
 
+  def os
+    if __RUBY_PLATFORM__.include?("linux")
+      "linux"
+    elsif __RUBY_PLATFORM__.include?("darwin")
+      "darwin"
+    elsif __RUBY_PLATFORM__.include?("bsd")
+      "bsd"
+    end
+  end
+
   def start_installation
     !File.exist?("/etc/dynaruby.conf") ? set_args : config_found
   end
@@ -112,7 +122,7 @@ class Config
         config.pop
         config.pop
         number_of_hostnames -= 1
-      elsif (config.last == "" && number_of_hostnames < 1)
+      elsif (config.last == "d" && number_of_hostnames < 1)
         puts "There are no hostnames to delete."
         config.pop
       else
@@ -160,9 +170,7 @@ class Config
     if os == "linux"
       FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
     elsif os == "bsd"
-      FileUtils.mv("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
-    else
-      logger("Unsupported OS. Please install the dynaruby service manually. Your detected os is: #{RUBY_PLATFORM}. You can use cron if you're inclined.")
+      #todo
     end
   end
 
@@ -196,6 +204,7 @@ class Config
     key = OpenSSL::Random.random_bytes(32)
     iv = OpenSSL::Random.random_bytes(16)
     merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
+    write_env_to_service(os, merged_key_iv)
     puts "THIS KEY IS FUNDAMENTAL TO DECRYPT YOUR NO-IP PASSWORD. DO NOT SHARE IT WITH ANYONE"
     puts "DYNARUBY_KEY: #{merged_key_iv}"
     cipher.key = key
