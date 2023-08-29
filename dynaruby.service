@@ -3,7 +3,7 @@ Description = "Dynaruby DDNS Client"
 After = network.target
 
 [Service]
-Environment="DYNARUBY_KEY=YUAccMLhB3HRL3xC5DIQHhso1E+ByYFm1GgLHzB3X/4=,+DfCQL75XzLyIeBVDH0bwQ=="
+Environment="DYNARUBY_KEY="
 ExecStart = /usr/local/sbin/dynaruby  
 Restart = always
 Type = simple
