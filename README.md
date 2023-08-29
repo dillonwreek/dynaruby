@@ -12,7 +12,7 @@ Instructions: <br>
   - Run `crontab -e` as root. This will let you modify the crontab with your default editor.<br>
   - append `@reboot DYNARUBY_KEY="YOUR=,KEY==" /path/to/ruby/ /usr/local/sbin/dynaruby`
   - you can know where Ruby is located with `which ruby`. It usually is `/usr/local/bin/ruby`
-  - Substitute `"YOUR=,KEY==` with the appropriate key given to you during the set-up. 
+  - Substitute `"YOUR=,KEY=="` with the appropriate key given to you during the set-up. 
   - if you lose your key, you will need to run `dynaruby -i` as root to create a new config file and generate a new key. They key is not stored if not as an env variable for safety reasons
   - reboot your machine to start the script 
   <strong>
