@@ -56,11 +56,11 @@ class Config
   end
 
   def os
-    if __RUBY_PLATFORM__.include?("linux")
+    if RUBY_PLATFORM.include?("linux")
       "linux"
-    elsif __RUBY_PLATFORM__.include?("darwin")
+    elsif RUBY_PLATFORM.include?("darwin")
       "darwin"
-    elsif __RUBY_PLATFORM__.include?("bsd")
+    elsif RUBY_PLATFORM.include?("bsd")
       "bsd"
     end
   end
