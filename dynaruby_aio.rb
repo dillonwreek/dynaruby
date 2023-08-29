@@ -123,11 +123,10 @@ class Config
       end
     end
 
-    config_file = File.open("/etc/dynaruby.conf", "w")
-    config.each do |line|
-      config_file.write("#{line}\n")
+    File.open("/etc/dynaruby.conf", "w") do |config_file|
+      config.each { |line| config_file.puts(line) }
     end
-    config_file.close
+
     logger("Config written to /etc/dynaruby.conf")
     copy_script
   end
@@ -145,16 +144,15 @@ class Config
   end
 
   def write_env_to_service(merged_key_iv)
-    if RUBY_PLATFORM.include?("linux")
-      if !File.exist?("#{Dir.pwd}/dynaruby.service")
-        logger("Service file not found. Downloading service script...")
-        download_service
-      end
-      dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
-      dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
-      File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
-        dynaruby_service.each { |line| file.puts(line) }
-      end
+    if !File.exist?("#{Dir.pwd}/dynaruby.service")
+      logger("Service file not found. Downloading service script...")
+      download_service
+    end
+
+    dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service").map(&:chomp)
+    dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+    File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
+      dynaruby_service.each { |line| file.puts(line) }
     end
   end
 
@@ -180,9 +178,9 @@ class Config
     key = OpenSSL::Random.random_bytes(32)
     iv = OpenSSL::Random.random_bytes(16)
     merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
-    write_env_to_service(merged_key_iv)
     puts "THIS KEY IS FUNDAMENTAL TO DECRYPT YOUR NO-IP PASSWORD. DO NOT SHARE IT WITH ANYONE"
     if !RUBY_PLATFORM.include?("linux")
+      write_env_to_service(merged_key_iv)
       puts "YOU NEED TO SET THIS KEY AS AN ENVIRONMENT VARIABLE SO DYNARUBY CAN DECRYPT YOUR PASSWORD"
     end
     puts "DYNARUBY_KEY: #{merged_key_iv}"
@@ -198,7 +196,7 @@ class Config
     begin
       merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
     rescue StandardError => error
-      logger("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "INVALID DYNARUBY_KEY"
+      logger("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: INVALID DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
     end
     decipher.key = Base64.decode64(merged_key_iv_array[0])
     decipher.iv = Base64.decode64(merged_key_iv_array[1])
