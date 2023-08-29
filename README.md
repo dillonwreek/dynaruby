@@ -7,7 +7,7 @@ Instructions: <br>
 2. Enter the directory and set `dynaruby_aio.rb` as executable with `chmod +x ./dynaruby_aio.rb`
 3. Run `dynaruby_aio.rb` as root and follow the on-screen instructions.
 4. <strong> For systems with systemd, the script will automatically write the enviroment variable to the service script and will automatically copy it under `/etc/systemd/system/dynaruby`. Please make it executable and run: <br>`systemctl enable dynaruby` and `systemctl start dynaruby` <strong>
-4. <strong> For systems without systemd, you can set a cron job to start dynaruby at boot: <br>
+5. <strong> For systems without systemd, you can set a cron job to start dynaruby at boot: <br>
   For OpenBSD: <br>
   - Run `crontab -e` as root. This will let you modify the crontab with your default editor.<br>
   - append `@reboot DYNARUBY_KEY="YOUR=,KEY==" /path/to/ruby/ /usr/local/sbin/dynaruby`
@@ -16,7 +16,7 @@ Instructions: <br>
   - if you lose your key, you will need to run `dynaruby -i` as root to create a new config file and generate a new key. They key is not stored if not as an env variable for safety reasons
   - reboot your machine to start the script 
   <strong>
-  5. You can check for logs in `/var/log/dynaruby.log`<br>
+  6. You can check for logs in `/var/log/dynaruby.log`<br>
   <br>
 
 ## FAQ
