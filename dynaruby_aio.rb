@@ -207,14 +207,20 @@ class Updater
     @last_ip = nil
   end
 
-  def check_ip_change(config)
+  def fetch_body(*)
     begin
-      new_ip = Net::HTTP.get(URI("http://ifconfig.me/ip"))
+      response = Net::HTTP.get_response(*)
     rescue StandardError => error
-      logger("Error: #{error}.. Waiting for 1 minute and checking again")
-      sleep 60
-      check_ip_change(config)
+      puts "Error: #{error}"
+      sleep 5
+      puts "trying again"
+      fetch_body(*)
     end
+    response.body
+  end
+
+  def check_ip_change(config)
+    new_ip = fetch_body(URI("http://ifconfig.me/ip"))
     case @last_ip
     when nil
       @last_ip = new_ip
@@ -235,13 +241,7 @@ class Updater
     headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/#{RUBY_PLATFORM}" }
 
     # response
-    begin
-      response = Net::HTTP.get_response(url, headers, authentication)
-    rescue StandardError => error
-      logger("Error: #{error}... Waiting for 1 minute and trying again")
-      sleep 60
-      update_ip(config, new_ip)
-    end
+    response = fetch_body(url, headers, authentication)
     if response.body.include?("nochg")
       logger("NO-IP parsed the request and found the IP is unchanged.")
     elsif response.body.include?("good")
