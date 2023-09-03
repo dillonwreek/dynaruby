@@ -11,28 +11,28 @@ require "logger"
 module Dynaruby
   class Reporter
     def initialize
-      @logger = Logger.new("/var/log/dynaruby.log", shift_size: 10 * 1024 * 1024, progname: "dynaruby")
+      @logger = Logger.new("/var/log/dynaruby.log", 10 * 1024 * 1024, progname: "dynaruby")
       @logger.datetime_format = "%Y-%m-%d %H:%M:%S"
     end
 
     def info(phrase)
       puts phrase
-      @logger.add(LOGGER::INFO, phrase)
+      @logger.add(1, phrase)
     end
 
     def warn(phrase)
       puts phrase
-      @logger.add(LOGGER::WARN, phrase)
+      @logger.add(2, phrase)
     end
 
     def error(phrase)
       puts phrase
-      @logger.add(LOGGER::ERROR, phrase)
+      @logger.add(3, phrase)
     end
 
     def fatal(phrase)
       puts phrase
-      @logger.add(LOGGER::FATAL, phrase)
+      @logger.add(4, phrase)
     end
   end
 
