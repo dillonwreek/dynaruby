@@ -150,7 +150,7 @@ module Dynaruby
     end
 
     def copy_script
-      LOGGER.info("Copying script to /usr/local/bin")
+      LOGGER.info("Copying script to /usr/local/sbin")
       File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
       FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
       if RUBY_PLATFORM.include?("linux")
@@ -214,11 +214,15 @@ module Dynaruby
       begin
         merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
       rescue StandardError => error
-        LOGGER.fatal("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: INVALID DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
+        LOGGER.fatal("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: NO DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
       end
       decipher.key = Base64.decode64(merged_key_iv_array[0])
       decipher.iv = Base64.decode64(merged_key_iv_array[1])
-      decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
+      begin
+        decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
+      rescue StandardError => error
+        LOGGER.fatal("Error decrypting the password, DYNARUBY_KEY is set, but probably not valid"); abort "ERROR: INVALID DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
+      end
     end
   end
 
