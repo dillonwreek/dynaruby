@@ -11,7 +11,8 @@ require "logger"
 module Dynaruby
   class Reporter
     def initialize
-      @logger = Logger.new("/var/log/dynaruby.log", progname: "dynaruby")
+      @logger = Logger.new("/var/log/dynaruby.log", shift_size: 10 * 1024 * 1024, progname: "dynaruby")
+      @logger.datetime_format = "%Y-%m-%d %H:%M:%S"
     end
 
     def info(phrase)
