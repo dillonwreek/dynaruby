@@ -30,4 +30,6 @@ Instructions: <br>
 **Q: Why do I need to run it as root?**<br>
 **A:** I do for simplicity, but you don't. By setting the appropriate permissions for the config file and log file, you could run the program as a non-privileged user. Remember to modify the systemd service file to include the appropriate user for the daemon.
 
+##Thanks to Crimson from the Ruby Discord community for reviewing my code and being so helpful. 
+
 
