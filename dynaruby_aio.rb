@@ -15,24 +15,15 @@ module Dynaruby
       @logger.datetime_format = "%Y-%m-%d %H:%M:%S"
     end
 
-    def info(phrase)
-      puts phrase
-      @logger.add(1, phrase)
-    end
-
-    def warn(phrase)
-      puts phrase
-      @logger.add(2, phrase)
-    end
-
-    def error(phrase)
-      puts phrase
-      @logger.add(3, phrase)
-    end
-
-    def fatal(phrase)
-      puts phrase
-      @logger.add(4, phrase)
+    def log(**phrase)
+      level = case phrase
+        in info: String => str then 1
+        in warn: String => str then 2
+        in error: String => str then 3
+        in fatal: String => str then 4
+        end
+      puts str
+      @logger.add(level, str)
     end
   end
 
@@ -97,7 +88,7 @@ module Dynaruby
 
     def prompt_args
       config = []
-      LOGGER.info("Let's get started setting up the config")
+      LOGGER.log(info: "Let's get started setting up the config")
       #Config file is structured as follows:
       #time=
       #input
@@ -145,25 +136,25 @@ module Dynaruby
         config.each { |line| config_file.puts(line) }
       end
 
-      LOGGER.info("Config written to /etc/dynaruby.conf")
+      LOGGER.log(info: "Config written to /etc/dynaruby.conf")
       copy_script
     end
 
     def copy_script
-      LOGGER.info("Copying script to /usr/local/sbin")
+      LOGGER.log(info: "Copying script to /usr/local/sbin")
       File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
       FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
       if RUBY_PLATFORM.include?("linux")
-        LOGGER.info("Successfully installed Dynaruby! The program will now install the appropriate service files")
+        LOGGER.log(info: "Successfully installed Dynaruby! The program will now install the appropriate service files")
         FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
       else
-        LOGGER.info("Successfully installed Dynaruby! Please see the github readme on how you can automatically run Dynaruby at boot")
+        LOGGER.log(info: "Successfully installed Dynaruby! Please see the github readme on how you can automatically run Dynaruby at boot")
       end
     end
 
     def write_env_to_service(merged_key_iv)
       if !File.exist?("#{Dir.pwd}/dynaruby.service")
-        LOGGER.warn("Service file not found. Downloading service script...")
+        LOGGER.log(warn: "Service file not found. Downloading service script...")
         download_service
       end
 
@@ -178,14 +169,14 @@ module Dynaruby
       begin
         service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
       rescue StandardError => error
-        LOGGER.error("Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (puts "Aborting..."; abort "User aborted")
+        LOGGER.log(error: "Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (puts "Aborting..."; abort "User aborted")
       end
       service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
 
       service_lines = service_raw.response.body.split("\n")
       service_lines.each { |line| service_file.puts(line) }
       service_file.close
-      LOGGER.info("Successfully downloaded the service script!")
+      LOGGER.log(info: "Successfully downloaded the service script!")
     end
 
     private
@@ -214,14 +205,14 @@ module Dynaruby
       begin
         merged_key_iv_array = ENV["DYNARUBY_KEY"].split(",")
       rescue StandardError => error
-        LOGGER.fatal("Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: NO DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
+        LOGGER.log(fatal: "Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: NO DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
       end
       decipher.key = Base64.decode64(merged_key_iv_array[0])
       decipher.iv = Base64.decode64(merged_key_iv_array[1])
       begin
         decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
       rescue StandardError => error
-        LOGGER.fatal("Error decrypting the password, DYNARUBY_KEY is set, but probably not valid"); abort "ERROR: INVALID DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
+        LOGGER.log(fatal: "Error decrypting the password, DYNARUBY_KEY is set, but probably not valid"); abort "ERROR: INVALID DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
       end
     end
   end
@@ -235,9 +226,9 @@ module Dynaruby
       begin
         response = Net::HTTP.get_response(*)
       rescue StandardError => error
-        LOGGER.error("Error fetching the body: #{error}")
+        LOGGER.log(error: "Error fetching the body: #{error}")
         sleep 5
-        Logger.info("trying again")
+        Logger.log(info: "trying again")
         fetch_body(*)
       end
       response.body
@@ -248,12 +239,12 @@ module Dynaruby
       case @last_ip
       when nil
         @last_ip = new_ip
-        LOGGER.info("IP was nil. Changing to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
+        LOGGER.log(info: "IP was nil. Changing to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
       when new_ip
-        LOGGER.info("IP did not change, waiting for #{config.sleep_time_in_minutes / 60} minutes and checking again")
+        LOGGER.log(info: "IP did not change, waiting for #{config.sleep_time_in_minutes / 60} minutes and checking again")
         sleep config.sleep_time_in_minutes; check_ip_change(config)
       else
-        LOGGER.info("IP changed, updating from #{@last_ip} to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
+        LOGGER.log(info: "IP changed, updating from #{@last_ip} to #{new_ip}"); @last_ip = new_ip; update_ip(config, new_ip)
       end
     end
 
@@ -267,15 +258,15 @@ module Dynaruby
       # response
       response = fetch_body(url, headers, authentication)
       if response.body.include?("nochg")
-        LOGGER.info("NO-IP parsed the request and found the IP is unchanged.")
+        LOGGER.log(info: "NO-IP parsed the request and found the IP is unchanged.")
       elsif response.body.include?("good")
-        LOGGER.info("NO-IP acknowledged the change. IP updated. Checking again in #{config.sleep_time_in_minutes / 60} minutes")
+        LOGGER.log(info: "NO-IP acknowledged the change. IP updated. Checking again in #{config.sleep_time_in_minutes / 60} minutes")
       else
-        LOGGER.add(3, "Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
+        LOGGER.log(info: "Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
         sleep 15; update_ip(config, new_ip)
       end
       # call to check again
-      LOGGER.info("Checking again in #{config.sleep_time_in_minutes / 60} minutes")
+      LOGGER.log(info: "Checking again in #{config.sleep_time_in_minutes / 60} minutes")
       sleep config.sleep_time_in_minutes
       check_ip_change(config)
     end
