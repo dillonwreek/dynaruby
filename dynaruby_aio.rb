@@ -138,45 +138,72 @@ module Dynaruby
 
       LOGGER.log(info: "Config written to /etc/dynaruby.conf")
       copy_script
+      LOGGER.log(info: "Successfully installed Dynaruby!")
     end
 
     def copy_script
-      LOGGER.log(info: "Copying script to /usr/local/sbin")
-      File.exist?("/usr/local/sbin/dynaruby") ? FileUtils.rm("/usr/local/sbin/dynaruby") : nil
       FileUtils.copy(__FILE__, "/usr/local/sbin/dynaruby")
+      LOGGER.log(info: "Dynaruby copied to /usr/local/sbin/dynaruby")
       if RUBY_PLATFORM.include?("linux")
-        LOGGER.log(info: "Successfully installed Dynaruby! The program will now install the appropriate service files")
-        FileUtils.mv("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby.service")
-      else
-        LOGGER.log(info: "Successfully installed Dynaruby! Please see the github readme on how you can automatically run Dynaruby at boot")
-      end
-    end
-
-    def write_env_to_service(merged_key_iv)
-      if !File.exist?("#{Dir.pwd}/dynaruby.service")
-        LOGGER.log(warn: "Service file not found. Downloading service script...")
-        download_service
-      end
-
-      dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service", chomp: true)
-      dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
-      File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
-        dynaruby_service.each { |line| file.puts(line) }
+        FileUtils.move("#{Dir.pwd}/dynaruby.service", "/etc/systemd/system/dynaruby")
+        LOGGER.log(info: "dynaruby.service copied under /etc/systemd/system/dynaruby. make it executable and enable it with systemctl enable dynaruby - systemctl start dynaruby")
+      elsif RUBY_PLATFORM.include?("bsd")
+        FileUtils.move("#{Dir.pwd}/dynaruby.rcd", "/etc/rc.d/dynaruby")
+        LOGGER.log(info: "rcd copied correctly under /etc/rc.d/dynaruby. Make it executable. Append 'pkg_scripts=dynaruby' and run rcctl enable dynaruby - rcctl start dynaruby")
       end
     end
 
     def download_service
-      begin
-        service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
-      rescue StandardError => error
-        LOGGER.log(error: "Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (puts "Aborting..."; abort "User aborted")
-      end
-      service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
+      if RUBY_PLATFORM.include?("linux")
+        begin
+          service_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.service"))
+        rescue StandardError => error
+          LOGGER.log(error: "Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (abort "User aborted")
+        end
 
-      service_lines = service_raw.response.body.split("\n")
-      service_lines.each { |line| service_file.puts(line) }
-      service_file.close
-      LOGGER.log(info: "Successfully downloaded the service script!")
+        service_lines = service_raw.response.body.split("\n")
+        service_file = File.open("#{Dir.pwd}/dynaruby.service", "w")
+        service_lines.each { |line| service_file.puts(line) }
+        service_file.close
+        LOGGER.log(info: "Successfully downloaded the service script!")
+      elsif RUBY_PLATFORM.include?("bsd")
+        begin
+          rcd_raw = Net::HTTP.get_response(URI("https://raw.githubusercontent.com/dillonwreek/dynaruby/main/dynaruby.rcd"))
+        rescue StandardError => error
+          LOGGER.log(error: "Error downloading the service script: #{error}, try again?"); prompt_confirmation ? download_service : (abort "User aborted")
+        end
+
+        rcd_lines = rcd_raw.response.body.split("\n")
+        rcd_file = File.open("#{Dir.pwd}/dynauby.rcd", "w")
+        rcd_lines.each { |line| rcd_file.puts(line) }
+        rcd_file.close
+      end
+    end
+
+    def write_env_to_service(merged_key_iv)
+      if RUBY_PLATFORM.include?("linux")
+        if !File.exist?("#{Dir.pwd}/dynaruby.service")
+          LOGGER.log(warn: "Service file not found. Downloading service script...")
+          download_service
+        end
+
+        dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service", chomp: true)
+        dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+        File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
+          dynaruby_service.each { |line| file.puts(line) }
+        end
+      elsif RUBY_PLATFORM.include?("bsd")
+        if !File.exist?("#{Dir.pwd}/dynaruby.rcd")
+          LOGGER.log(warn: "rc.d script not found. Downloading rc.d script...")
+          download_service
+        end
+
+        dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd", chomp: true)
+        dynaruby_rcd[8] = "exec DYNARUBY_KEY=\"#{merged_key_iv}\" /usr/local/sbin/dynaruby &"
+        File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
+          dynaruby_rcd.each { |line| file.puts(line) }
+        end
+      end
     end
 
     private
@@ -187,11 +214,7 @@ module Dynaruby
       key = OpenSSL::Random.random_bytes(32)
       iv = OpenSSL::Random.random_bytes(16)
       merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
-      puts "THIS KEY IS FUNDAMENTAL TO DECRYPT YOUR NO-IP PASSWORD. DO NOT SHARE IT WITH ANYONE"
-      if !RUBY_PLATFORM.include?("linux")
-        write_env_to_service(merged_key_iv)
-        puts "YOU NEED TO SET THIS KEY AS AN ENVIRONMENT VARIABLE SO DYNARUBY CAN DECRYPT YOUR PASSWORD"
-      end
+      write_env_to_service(merged_key_iv)
       puts "DYNARUBY_KEY: #{merged_key_iv}"
       cipher.key = key
       cipher.iv = iv
