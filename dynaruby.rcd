@@ -1,0 +1,12 @@
+#!/bin/ksh
+
+daemon="/usr/local/sbin/dynaruby"
+name="dynaruby"
+
+. /etc/rc.d/rc.subr
+
+rc_start() {
+exec DYNARUBY_KEY="YOUR=,KEY==" /usr/local/sbin/dynaruby &
+}
+
+rc_cmd $1
