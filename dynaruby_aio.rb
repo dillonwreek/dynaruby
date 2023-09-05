@@ -188,7 +188,7 @@ module Dynaruby
         end
 
         dynaruby_service = File.readlines("#{Dir.pwd}/dynaruby.service", chomp: true)
-        dynaruby_service[5] = "Environment=\"DYNARUBY_KEY=#{merged_key_iv}\"\n"
+        dynaruby_service[5] = 'Environment="DYNARUBY_KEY=#{merged_key_iv}"'
         File.open("#{Dir.pwd}/dynaruby.service", "w") do |file|
           dynaruby_service.each { |line| file.puts(line) }
         end
@@ -199,7 +199,7 @@ module Dynaruby
         end
 
         dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd", chomp: true)
-        dynaruby_rcd[8] = "export DYNARUBY_KEY=\"#{merged_key_iv}\""
+        dynaruby_rcd[8] = 'export DYNARUBY_KEY="#{merged_key_iv}"'
         File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
           dynaruby_rcd.each { |line| file.puts(line) }
         end
