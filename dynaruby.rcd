@@ -6,8 +6,9 @@ name="dynaruby"
 . /etc/rc.d/rc.subr
 
 rc_start() {
+export DYNARUBY_KEY="YOUR,KEY"
 time=$(date '+%H:%M:%S')
 echo "$time Starting $name" >> /var/log/dynaruby.log
-DYNARUBY_KEY="YOUR,KEY" /usr/local/bin/ruby /usr/local/sbin/dynaruby
+exec $daemon &
 }
 rc_cmd $1

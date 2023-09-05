@@ -174,7 +174,7 @@ module Dynaruby
         end
 
         rcd_lines = rcd_raw.response.body.split("\n")
-        rcd_file = File.open("#{Dir.pwd}/dynauby.rcd", "w")
+        rcd_file = File.open("#{Dir.pwd}/dynaruby.rcd", "w")
         rcd_lines.each { |line| rcd_file.puts(line) }
         rcd_file.close
       end
@@ -199,7 +199,7 @@ module Dynaruby
         end
 
         dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd", chomp: true)
-        dynaruby_rcd[10] = "DYNARUBY_KEY=\"#{merged_key_iv}\" /usr/local/bin/ruby /usr/local/sbin/dynaruby"
+        dynaruby_rcd[8] = "export DYNARUBY_KEY=\"#{merged_key_iv}\""
         File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
           dynaruby_rcd.each { |line| file.puts(line) }
         end
