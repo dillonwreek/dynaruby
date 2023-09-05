@@ -199,7 +199,7 @@ module Dynaruby
         end
 
         dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd", chomp: true)
-        dynaruby_rcd[8] = "exec DYNARUBY_KEY=\"#{merged_key_iv}\" /usr/local/sbin/dynaruby &"
+        dynaruby_rcd[10] = "DYNARUBY_KEY=\"#{merged_key_iv}\" /usr/local/bin/ruby /usr/local/sbin/dynaruby"
         File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
           dynaruby_rcd.each { |line| file.puts(line) }
         end
@@ -280,9 +280,9 @@ module Dynaruby
 
       # response
       response = fetch_body(url, headers, authentication)
-      if response.body.include?("nochg")
+      if response.include?("nochg")
         LOGGER.log(info: "NO-IP parsed the request and found the IP is unchanged.")
-      elsif response.body.include?("good")
+      elsif response.include?("good")
         LOGGER.log(info: "NO-IP acknowledged the change. IP updated. Checking again in #{config.sleep_time_in_minutes / 60} minutes")
       else
         LOGGER.log(info: "Something went wrong updating the IP. The response from NO-IP was:  #{response.body}. Trying again in 15 seconds")
