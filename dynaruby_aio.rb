@@ -199,7 +199,7 @@ module Dynaruby
         end
 
         dynaruby_rcd = File.readlines("#{Dir.pwd}/dynaruby.rcd", chomp: true)
-        dynaruby_rcd[8] = 'export DYNARUBY_KEY="#{merged_key_iv}"'
+        dynaruby_rcd[8] = "export DYNARUBY_KEY=\"#{merged_key_iv}\""
         File.open("#{Dir.pwd}/dynaruby.rcd", "w") do |file|
           dynaruby_rcd.each { |line| file.puts(line) }
         end
@@ -213,7 +213,7 @@ module Dynaruby
       cipher.encrypt
       key = OpenSSL::Random.random_bytes(32)
       iv = OpenSSL::Random.random_bytes(16)
-      merged_key_iv = Base64.encode64(key) + "," + Base64.encode64(iv)
+      merged_key_iv = Base64.strict_encode64(key) + "," + Base64.strict_encode64(iv)
       write_env_to_service(merged_key_iv)
       puts "DYNARUBY_KEY: #{merged_key_iv}"
       cipher.key = key
@@ -230,8 +230,8 @@ module Dynaruby
       rescue StandardError => error
         LOGGER.log(fatal: "Error loading the DYNARUBY_KEY. It's probably not set. Ruby error: #{error}.."); abort "ERROR: NO DYNARUBY_KEY. CHECK THE README FOR MORE INFO"
       end
-      decipher.key = Base64.decode64(merged_key_iv_array[0])
-      decipher.iv = Base64.decode64(merged_key_iv_array[1])
+      decipher.key = Base64.strict_decode64(merged_key_iv_array[0])
+      decipher.iv = Base64.strict_decode64(merged_key_iv_array[1])
       begin
         decrypted_pswd = decipher.update(Base64.decode64(password)) + decipher.final
       rescue StandardError => error
