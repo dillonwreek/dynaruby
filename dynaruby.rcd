@@ -7,8 +7,6 @@ name="dynaruby"
 
 rc_start() {
 export DYNARUBY_KEY="YOUR,KEY"
-time=$(date '+%H:%M:%S')
-echo "$time Starting $name" >> /var/log/dynaruby.log
-exec $daemon &
+exec /usr/local/sbin/dynaruby &
 }
 rc_cmd $1
