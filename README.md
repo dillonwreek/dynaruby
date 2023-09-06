@@ -13,12 +13,11 @@ Instructions: <br>
   - make the `rc.d` script executable.<br>
   - run `rcctl enable dynaruby`
   - if the command doesn't do it automatically, add `dynaruby` to `pkg_scripts` in `/etc/rc.conf.local`
-  <strong>
-  6. If you don't want to use systemd or rc.d, you can set a cron job like this: `@reboot DYNARUBY_KEY="YOUR=,KEY==" /path/to/ruby/ /usr/local/sbin/dynaruby`. You can know where ruby is with `which ruby`
-    
-  7. You can check for logs in `/var/log/dynaruby.log`<br>
-  <br>
+6. If you don't want to use rc.d or systemd, you can create a cron job like this:
+  - `crontab -e`
+  - append `@reboot DYNARUBY_KEY="YOUR=,KEY==" /path/to/ruby/ /usr/local/sbin/dynaruby`. You can know where Ruby is with `which ruby`
 
+7. Check for logs in `/var/log/dynaruby.log`
 ## FAQ
 
 **Q: Why do you need DYNARUBY_KEY?, What is it exactly?**<br>
