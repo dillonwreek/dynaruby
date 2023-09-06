@@ -8,7 +8,9 @@ require "net/http"
 require "uri"
 require "logger"
 
+#the namespace is here to make the LOGGER class available everywhere in the script
 module Dynaruby
+  #custom logger class to `puts` whats logged in the log file
   class Reporter
     def initialize
       @logger = Logger.new("/var/log/dynaruby.log", 10 * 1024 * 1024, progname: "dynaruby")
@@ -41,6 +43,7 @@ module Dynaruby
     end
   end
 
+  #class to handle config file and writing to it. Also copying the script and service to it's proper place
   class Config
     def initialize
       if File.exist?("/etc/dynaruby.conf")
@@ -240,11 +243,14 @@ module Dynaruby
     end
   end
 
+  # what will be running in the background most of the time. Send get request to ifconfig.me/ip, check if Ip changed,
+  # if it did, notify NO-IP and update IP. @last_ip is nil at every restart of the script
   class Updater
     def initialize
       @last_ip = nil
     end
 
+    #single method to fetch the body for the two get requests. * can be any argument
     def fetch_body(*)
       begin
         response = Net::HTTP.get_response(*)
@@ -271,12 +277,24 @@ module Dynaruby
       end
     end
 
+    #NO-IP wants the request to look like this
     def update_ip(config, new_ip)
+      # the hostname you want to update at the end of their api endpoint uri followed by the new ip you want to set
       url = URI("https://dynupdate.no-ip.com/nic/update?hostname=#{config.hostnames.join(" ")}&myip=#{new_ip}")
+
+      #an authentication header with basic auth composed of the username and password in base64
       authentication = Net::HTTP::Get.new(url)
       authentication.basic_auth config.username, config.password
-      authorization = Base64.encode64("#{config.username}:#{config.password}")
+      authorization = Base64.strict_encode64("#{config.username}:#{config.password}")
+
+      # an user agent which will be used to identify the client as per their requirements
       headers = { "Authorization" => "Basic #{authorization}", "User-Agent" => "Personal dynaruby/#{RUBY_PLATFORM}" }
+
+      #What is the response from NO-IP?
+      #good => IP updated
+      #nochg => IP unchanged
+      #nohost => Something wrong with the hostname // it can happen a few times at boot for no good reason, but then it works fine after 2 retries
+      #bad auth => Something wrong with the authentication, username and/or password are wrong
 
       # response
       response = fetch_body(url, headers, authentication)
