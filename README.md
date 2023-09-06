@@ -27,7 +27,7 @@ Instructions: <br>
 **A:** I have a problem where the intended way to pass the variable to the rc.d just won't work for me. If you know how to programmatically set the env variable like I'm doing for systemd, please create a PR~~ *Dynaruby now supports rc.d! Thanks to reddit user gmelis*
 
 **Q: Why do I need to run it as root?**<br>
-**A:** I do for simplicity, but you don't. By setting the appropriate permissions for the config file and log file, you could run the program as a non-privileged user. Remember to modify the systemd service file to include the appropriate user for the daemon.
+**A:** I do for simplicity, but you don't. By setting the appropriate permissions for the config file and log file, you could run the program as a non-privileged user. Remember to modify the service file to include the appropriate user for the daemon.
 
 ## Thanks to Crimson from the Ruby Discord community for reviewing my code and being so helpful. 
 
