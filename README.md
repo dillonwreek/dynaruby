@@ -8,14 +8,14 @@ Instructions: <br>
 1. Clone the repository
 2. Enter the directory and set `dynaruby_aio.rb` as executable with `chmod +x ./dynaruby_aio.rb`
 3. Run `dynaruby_aio.rb` as root and follow the on-screen instructions.
-4. <strong> For systems with systemd, the script will automatically write the enviroment variable to the service script and will automatically copy it under `/etc/systemd/system/dynaruby`. Please make it executable and run: <br>`systemctl enable dynaruby` and `systemctl start dynaruby` <strong>
-5. <strong> For systems without systemd, you can set a cron job to start dynaruby at boot: <br>
-  For OpenBSD: <br>
+4. For systems with systemd, the script will automatically write the enviroment variable to the service script and will automatically copy it under `/etc/systemd/system/dynaruby`. Please make it executable and run: <br>`systemctl enable dynaruby` and `systemctl start dynaruby`
+5. For OpenBSD: <br>
   - make the `rc.d` script executable.<br>
   - run `rcctl enable dynaruby`
   - if the command doesn't do it automatically, add `dynaruby` to `pkg_scripts` in `/etc/rc.conf.local`
   <strong>
-  6. You can check for logs in `/var/log/dynaruby.log`<br>
+  6. If you don't want to use systemd or rc.d, you can set a cron job like this: `@reboot DYNARUBY_KEY="YOUR=,KEY==" /path/to/ruby/ /usr/local/sbin/dynaruby`. You can know where ruby is with `which ruby`
+  7. You can check for logs in `/var/log/dynaruby.log`<br>
   <br>
 
 ## FAQ
