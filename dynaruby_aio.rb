@@ -250,15 +250,15 @@ module Dynaruby
       @last_ip = nil
     end
 
-    #single method to fetch the body for the two get requests. * can be any argument
-    def fetch_body(*)
+    #single method to fetch the body for the two get requests.
+    def fetch_body(*args)
       begin
-        response = Net::HTTP.get_response(*)
+        response = Net::HTTP.get_response(*args)
       rescue StandardError => error
         LOGGER.log(error: "Error fetching the body: #{error}")
         sleep 5
         Logger.log(info: "trying again")
-        fetch_body(*)
+        fetch_body(*args)
       end
       response.body
     end
